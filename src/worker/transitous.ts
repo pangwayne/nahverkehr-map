@@ -27,8 +27,8 @@ export const TRIP_BUCKET_MS = 60_000;
 
 // Trip IDs of German trams, buses and regional trains: "<service day>_<start time>_de-DELFI_<id>",
 // e.g. "20261020_21:41_de-DELFI_3435794835". Times can pass 24:00 ("20261020_24:43_...": after midnight,
-// same service day). Same reason as the stop ID check.
-const TRIP_ID_PATTERN = /^\d{8}_\d{2}:\d{2}_de-DELFI_[A-Za-z0-9:._-]{1,80}$/;
+// same service day, never past 47:59). Same reason as the stop ID check.
+const TRIP_ID_PATTERN = /^20\d{6}_(?:[0-3]\d|4[0-7]):[0-5]\d_de-DELFI_[A-Za-z0-9:._-]{1,80}$/;
 
 export function bucketStart(nowMs: number, bucketMs: number): number {
   return Math.floor(nowMs / bucketMs) * bucketMs;

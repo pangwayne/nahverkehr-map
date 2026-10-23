@@ -41,21 +41,34 @@
         address, date and time, the address requested (for example which stop's departures), the page you came
         from, and your browser and operating system. Cloudflare uses this data to deliver the app and to protect
         it from attacks. The photo in the header comes from my website www.pangwayne.com, which Cloudflare
-        also hosts, so the same applies there. Cloudflare also keeps short-lived request logs that help me find
-        errors. If Cloudflare
-        suspects automated access (bots), it may run a short check in your browser and store the result in the
-        cookie <code>cf_clearance</code>.
+        also hosts, so the same applies there.
+      </p>
+      <p>
+        <strong>Error logs:</strong> Cloudflare keeps logs of the requests to the app for me (among other things the
+        address requested, the time and the answer), which help me find errors. They are deleted after 3 days.
+      </p>
+      <p>
+        <strong>Bot detection:</strong> Every time a page loads, Cloudflare runs a small check script in your
+        browser that looks at technical features of the browser to detect automated access (bots). Cloudflare
+        stores the result in the cookie <code>cf_clearance</code> on your device.
+      </p>
+      <p>
+        <strong>Protection against overload:</strong> So nobody can swamp the app with mass requests, my server
+        counts per IP address how many departures and trips were newly fetched from Transitous (section 6) in the
+        last minute, and refuses more once there are over 100. The count only lasts that minute and is not stored.
       </p>
       <p>
         <strong>Legal basis:</strong> my legitimate interest in a secure, working app (Art. 6(1)(f) GDPR). The bot
-        check and its cookie are strictly necessary for this (Section 25(2) No. 2 TDDDG).
+        detection and its cookie protect the app you are using and are strictly necessary for that (Section 25(2)
+        No. 2 TDDDG).
       </p>
       <p>
         <strong>Recipient:</strong> Cloudflare, Inc., USA. Cloudflare is certified under the EU-US Data Privacy
         Framework.
       </p>
       <p>
-        <strong>Storage:</strong> Cloudflare deletes this data once it is no longer needed for these purposes.
+        <strong>Storage:</strong> The error logs are deleted after 3 days. Cloudflare deletes the other data once it
+        is no longer needed for these purposes.
       </p>
 
       <h2>3. No tracking, no consent banner</h2>
@@ -70,10 +83,12 @@
         asked for (Section 25(2) No. 2 TDDDG).
       </p>
       <p>
-        So the map opens where you left it, your browser also keeps the last map view in its local storage (entry
-        <code>view</code>: the centre point and zoom level of the map). If you used "My location", that view can be
-        near where you were. It stays on your device and is never sent to me or anyone else; you can delete it in
-        your browser settings. It is strictly necessary for this function you use (Section 25(2) No. 2 TDDDG).
+        So the map does not jump back when you reload the page, your browser keeps the current map view in this
+        tab's session storage (entry <code>view</code>: the centre point and zoom level of the map). If you used "My
+        location", that view can be near where you were. It stays on your device, is never sent to me or anyone
+        else, and is deleted as soon as you close the tab or browser. It is strictly necessary for the map you are
+        using (Section 25(2) No. 2 TDDDG). Earlier versions of the app kept this entry in local storage for good;
+        the app deletes that old copy on your next visit.
       </p>
       <p>
         The app's own font is delivered from this site, not from an outside font service.
@@ -85,7 +100,8 @@
         your browser sends your IP address, the map area requested, the page you came from, and your browser and
         operating system to OpenFreeMap. According to OpenFreeMap, its normal access logs contain no IP addresses
         and it uses no cookies; error logs may contain your IP address and are deleted after 7 days. During a
-        security incident (for example an attack), it may log IP addresses for up to 30 days. Details:
+        security incident (for example an attack), it may log IP addresses for up to 30 days. OpenFreeMap may
+        deliver the map through Cloudflare's network; Cloudflare then receives the same technical data. Details:
         <a href="https://openfreemap.org/privacy/">OpenFreeMap privacy policy</a>.
       </p>
       <p>
@@ -93,7 +109,8 @@
         (Art. 6(1)(f) GDPR).
       </p>
       <p>
-        <strong>Recipient:</strong> Hyperknot Software Kft., Hungary (OpenFreeMap).
+        <strong>Recipient:</strong> Hyperknot Software Kft., Hungary (OpenFreeMap), possibly through its service
+        provider Cloudflare, Inc., USA (certified under the EU-US Data Privacy Framework).
       </p>
 
       <h2>5. "My location"</h2>

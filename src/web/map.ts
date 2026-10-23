@@ -15,8 +15,16 @@ const STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 const BONN_CENTER: [number, number] = [7.0982, 50.7374];
 const START_ZOOM = 13;
 
-// Later visits start where the map was left. Kept in this browser only (localStorage), never sent.
+// A reload starts where the map was left. Kept in this tab only until it is closed (sessionStorage),
+// never sent. Not kept across visits: nobody asked for that (privacy page, section 3).
 const VIEW_KEY = "view";
+
+// Earlier versions kept the view for good in localStorage: remove that copy.
+try {
+  localStorage.removeItem(VIEW_KEY);
+} catch {
+  // Storage blocked: nothing was stored either.
+}
 
 interface View {
   center: [number, number];
@@ -25,7 +33,7 @@ interface View {
 
 function savedView(): View | null {
   try {
-    const v = JSON.parse(localStorage.getItem(VIEW_KEY) ?? "null") as unknown;
+    const v = JSON.parse(sessionStorage.getItem(VIEW_KEY) ?? "null") as unknown;
     if (!Array.isArray(v) || v.length !== 3 || !v.every((n) => typeof n === "number" && Number.isFinite(n))) return null;
     const [lon, lat, zoom] = v as number[];
     if (Math.abs(lon!) > 180 || Math.abs(lat!) > 85 || zoom! < 0 || zoom! > 22) return null;
@@ -39,9 +47,9 @@ function saveView(map: maplibregl.Map): void {
   const c = map.getCenter();
   const round = (n: number) => Math.round(n * 1e5) / 1e5;
   try {
-    localStorage.setItem(VIEW_KEY, JSON.stringify([round(c.lng), round(c.lat), Math.round(map.getZoom() * 100) / 100]));
+    sessionStorage.setItem(VIEW_KEY, JSON.stringify([round(c.lng), round(c.lat), Math.round(map.getZoom() * 100) / 100]));
   } catch {
-    // Storage blocked: the next visit starts at Bonn again.
+    // Storage blocked: a reload starts at Bonn again.
   }
 }
 

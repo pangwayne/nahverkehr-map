@@ -26,6 +26,16 @@ const STOPS_BROWSER_MAX_AGE_S = 6 * 3600;
 
 const LIVE_BROWSER_MAX_AGE_S = 10;
 
+// A failed answer is remembered too, so repeated requests for it do not all reach Transitous:
+// an unknown stop or trip for a while, an outage only briefly (it may be over soon).
+const NOT_FOUND_CACHE_S = 600;
+const OUTAGE_CACHE_S = 15;
+
+// Upstream requests per visitor: generous for a person tapping around (a board can fetch up to 13
+// at once), low enough to stop a script from making up IDs to get past the shared cache.
+// The limit itself lives in wrangler.jsonc (API_LIMIT).
+const RATE_LIMITED_RETRY_S = 60;
+
 // Sent with every page and API answer.
 const SECURITY_HEADERS: Record<string, string> = {
   "Strict-Transport-Security": "max-age=31536000",
@@ -63,11 +73,22 @@ export default {
         Response.json({ error: "method not allowed" }, { status: 405, headers: { Allow: "GET, HEAD" } }),
       );
     }
-    return withSecurityHeaders(await api(url, ctx));
+    return withSecurityHeaders(await api(url, upstreamAllowed(request, env), ctx));
   },
 } satisfies ExportedHandler<Env>;
 
-async function api(url: URL, ctx: ExecutionContext): Promise<Response> {
+// Asks the rate limiter, only when an answer has to come from Transitous. The visitor's IP is the
+// key (there is nothing else to tell visitors apart); the count lasts one minute and is not logged.
+function upstreamAllowed(request: Request, env: Env): () => Promise<boolean> {
+  return async () => {
+    if (!env.API_LIMIT) return true; // tests and `npm run dev` without the binding
+    const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
+    const { success } = await env.API_LIMIT.limit({ key: ip });
+    return success;
+  };
+}
+
+async function api(url: URL, allowed: () => Promise<boolean>, ctx: ExecutionContext): Promise<Response> {
   const base = `${url.origin}${url.pathname}`;
 
   if (url.pathname === "/api/health") {
@@ -75,10 +96,11 @@ async function api(url: URL, ctx: ExecutionContext): Promise<Response> {
   }
 
   if (url.pathname === "/api/stops") {
-    return cachedProxy(ctx, {
+    return cachedProxy(ctx, allowed, {
       upstreamUrl: buildStopsUrl(),
       bucketKey: `${base}?area=${AREA_VERSION}&fresh`,
       latestKey: `${base}?area=${AREA_VERSION}&latest`,
+      failKey: `${base}?area=${AREA_VERSION}&failed`,
       freshS: DAY_S,
       staleS: STOPS_STALE_LIMIT_S,
       browserMaxAgeS: STOPS_BROWSER_MAX_AGE_S,
@@ -92,10 +114,11 @@ async function api(url: URL, ctx: ExecutionContext): Promise<Response> {
     }
     const start = bucketStart(Date.now(), DEPARTURES_BUCKET_MS);
     const id = encodeURIComponent(stopId);
-    return cachedProxy(ctx, {
+    return cachedProxy(ctx, allowed, {
       upstreamUrl: buildDeparturesUrl(stopId),
       bucketKey: `${base}?stopId=${id}&bucket=${start}`,
       latestKey: `${base}?stopId=${id}&latest`,
+      failKey: `${base}?stopId=${id}&failed`,
       freshS: DEPARTURES_BUCKET_MS / 1000,
       staleS: STALE_LIMIT_S,
       browserMaxAgeS: LIVE_BROWSER_MAX_AGE_S,
@@ -109,10 +132,11 @@ async function api(url: URL, ctx: ExecutionContext): Promise<Response> {
     }
     const start = bucketStart(Date.now(), TRIP_BUCKET_MS);
     const id = encodeURIComponent(tripId);
-    return cachedProxy(ctx, {
+    return cachedProxy(ctx, allowed, {
       upstreamUrl: buildTripUrl(tripId),
       bucketKey: `${base}?tripId=${id}&bucket=${start}`,
       latestKey: `${base}?tripId=${id}&latest`,
+      failKey: `${base}?tripId=${id}&failed`,
       freshS: TRIP_BUCKET_MS / 1000,
       staleS: STALE_LIMIT_S,
       browserMaxAgeS: LIVE_BROWSER_MAX_AGE_S,
@@ -145,24 +169,49 @@ interface ProxyOptions {
   upstreamUrl: string;
   bucketKey: string; // shared by everyone in the same time bucket
   latestKey: string; // last good copy, used when Transitous fails
+  failKey: string; // a recent failure, so it is not asked for again right away
   freshS: number;
   staleS: number;
   browserMaxAgeS: number;
 }
 
-async function cachedProxy(ctx: ExecutionContext, opts: ProxyOptions): Promise<Response> {
+export type Failure = "notFound" | "outage";
+
+// A 4xx answer means Transitous does not know the ID (made up, or a trip that is long gone).
+// Everything else (5xx, too many requests, timeouts) may be over soon.
+export function failureKind(status: number | null): Failure {
+  return status !== null && status >= 400 && status < 500 && status !== 408 && status !== 429 ? "notFound" : "outage";
+}
+
+async function cachedProxy(ctx: ExecutionContext, allowed: () => Promise<boolean>, opts: ProxyOptions): Promise<Response> {
   const cache = caches.default;
   const bucketKey = new Request(opts.bucketKey);
   const latestKey = new Request(opts.latestKey);
+  const failKey = new Request(opts.failKey);
 
   const hit = await cache.match(bucketKey);
   if (hit) return forClient(hit, "HIT", opts.browserMaxAgeS);
 
+  // Failed a moment ago: answer the same way without asking Transitous again.
+  const failed = await cache.match(failKey);
+  if (failed) return failedAnswer(cache, latestKey, failed.headers.get("X-Failure") as Failure, opts.browserMaxAgeS);
+
+  if (!(await allowed())) {
+    const last = await cache.match(latestKey);
+    if (last) return forClient(last, "STALE", opts.browserMaxAgeS);
+    return Response.json(
+      { error: "too many requests" },
+      { status: 429, headers: { "Cache-Control": "no-store", "Retry-After": String(RATE_LIMITED_RETRY_S) } },
+    );
+  }
+
+  let status: number | null = null;
   try {
     const upstream = await fetch(opts.upstreamUrl, {
       headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
+    status = upstream.status;
     if (!upstream.ok) throw new Error(`Transitous answered ${upstream.status}`);
 
     // Buffer the bytes without parsing them (cheap), so we can store two copies and answer.
@@ -181,15 +230,28 @@ async function cachedProxy(ctx: ExecutionContext, opts: ProxyOptions): Promise<R
     ctx.waitUntil(cache.put(latestKey, stored(opts.staleS)));
     return forClient(stored(0), "MISS", opts.browserMaxAgeS);
   } catch (err) {
-    const last = await cache.match(latestKey);
-    if (last) return forClient(last, "STALE", opts.browserMaxAgeS);
+    const kind = failureKind(status);
     // The details go to the Cloudflare logs only, not to the public answer.
     console.error("upstream failed", opts.upstreamUrl, err);
-    return Response.json(
-      { error: "upstream unavailable" },
-      { status: 502, headers: { "Cache-Control": "no-store" } },
-    );
+    // Stored as a plain 200 marker; the real status is set when answering.
+    const marker = new Response(null, {
+      headers: {
+        "Cache-Control": `public, max-age=${kind === "notFound" ? NOT_FOUND_CACHE_S : OUTAGE_CACHE_S}`,
+        "X-Failure": kind,
+      },
+    });
+    ctx.waitUntil(cache.put(failKey, marker));
+    return failedAnswer(cache, latestKey, kind, opts.browserMaxAgeS);
   }
+}
+
+// The last good copy if there is one; else 404 for an unknown ID, 502 for an outage.
+async function failedAnswer(cache: Cache, latestKey: Request, kind: Failure, maxAgeS: number): Promise<Response> {
+  const last = await cache.match(latestKey);
+  if (last) return forClient(last, "STALE", maxAgeS);
+  return kind === "notFound"
+    ? Response.json({ error: "not found" }, { status: 404, headers: { "Cache-Control": "no-store" } })
+    : Response.json({ error: "upstream unavailable" }, { status: 502, headers: { "Cache-Control": "no-store" } });
 }
 
 // Copy a cached response for the browser: short browser cache, plus debug headers.

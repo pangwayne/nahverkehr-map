@@ -16,6 +16,9 @@ export default defineConfig({
       build: {
         // Fonts stay real files: the page's CSP only allows fonts from the site itself, not inline data.
         assetsInlineLimit: (file) => (file.endsWith(".woff2") ? false : undefined),
+        // The licenses of the bundled packages (MapLibre's BSD licence asks for its notice to ship
+        // with the code), served at /licenses.md.
+        license: { fileName: "licenses.md" },
         rolldownOptions: {
           input: ["index.html", "privacy.html", "de/datenschutzerklaerung.html"],
         },

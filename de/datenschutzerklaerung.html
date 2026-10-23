@@ -41,22 +41,36 @@
         IP-Adresse, Datum und Uhrzeit, die aufgerufene Adresse (zum Beispiel die Abfahrten welcher Haltestelle),
         die zuvor besuchte Seite sowie Browser und Betriebssystem. Cloudflare nutzt diese Daten, um die App
         auszuliefern und vor Angriffen zu schützen. Das Foto in der Kopfzeile stammt von meiner Website
-        www.pangwayne.com, die ebenfalls bei Cloudflare liegt; dort gilt dasselbe. Außerdem speichert Cloudflare kurzlebige Zugriffsprotokolle,
-        die mir bei der Fehlersuche helfen. Vermutet Cloudflare automatisierte Zugriffe (Bots), kann es in Ihrem
-        Browser eine kurze Prüfung ausführen und das Ergebnis im Cookie <code>cf_clearance</code> speichern.
+        www.pangwayne.com, die ebenfalls bei Cloudflare liegt; dort gilt dasselbe.
+      </p>
+      <p>
+        <strong>Fehlerprotokolle:</strong> Cloudflare speichert für mich Protokolle der Anfragen an die App (unter
+        anderem die aufgerufene Adresse, den Zeitpunkt und die Antwort), die mir bei der Fehlersuche helfen. Sie
+        werden nach 3 Tagen gelöscht.
+      </p>
+      <p>
+        <strong>Bot-Erkennung:</strong> Bei jedem Aufruf einer Seite führt Cloudflare in Ihrem Browser ein kleines
+        Prüfskript aus, das technische Merkmale des Browsers auswertet, um automatisierte Zugriffe (Bots) zu
+        erkennen. Das Ergebnis speichert Cloudflare im Cookie <code>cf_clearance</code> auf Ihrem Gerät.
+      </p>
+      <p>
+        <strong>Schutz vor Überlastung:</strong> Damit niemand die App mit massenhaften Anfragen lahmlegt, zählt
+        mein Server je IP-Adresse, wie viele Abfahrten und Fahrten in der letzten Minute neu bei Transitous
+        (Abschnitt 6) abgefragt wurden, und lehnt weitere ab, wenn es mehr als 100 sind. Der Zähler gilt nur für
+        diese Minute und wird nicht gespeichert.
       </p>
       <p>
         <strong>Rechtsgrundlage:</strong> mein berechtigtes Interesse an einer sicheren, funktionierenden App
-        (Art. 6 Abs. 1 lit. f DSGVO). Die Bot-Erkennung und ihr Cookie sind dafür unbedingt erforderlich (§ 25
-        Abs. 2 Nr. 2 TDDDG).
+        (Art. 6 Abs. 1 lit. f DSGVO). Die Bot-Erkennung und ihr Cookie dienen der Sicherheit der App, die Sie
+        aufrufen, und sind dafür unbedingt erforderlich (§ 25 Abs. 2 Nr. 2 TDDDG).
       </p>
       <p>
         <strong>Empfänger:</strong> Cloudflare, Inc., USA. Cloudflare ist nach dem EU-US Data Privacy Framework
         zertifiziert.
       </p>
       <p>
-        <strong>Speicherdauer:</strong> Cloudflare löscht diese Daten, sobald sie für diese Zwecke nicht mehr
-        benötigt werden.
+        <strong>Speicherdauer:</strong> Die Fehlerprotokolle werden nach 3 Tagen gelöscht. Die übrigen Daten löscht
+        Cloudflare, sobald sie für die genannten Zwecke nicht mehr benötigt werden.
       </p>
 
       <h2>3. Kein Tracking, kein Cookie-Banner</h2>
@@ -71,12 +85,13 @@
         Ihnen gewählte Einstellung unbedingt erforderlich (§ 25 Abs. 2 Nr. 2 TDDDG).
       </p>
       <p>
-        Damit die Karte dort öffnet, wo Sie sie verlassen haben, speichert Ihr Browser außerdem den letzten
-        Kartenausschnitt im lokalen Speicher (Eintrag <code>view</code>: Mittelpunkt und Zoomstufe der Karte). Wenn
-        Sie "Mein Standort" genutzt haben, kann dieser Ausschnitt in der Nähe Ihres Aufenthaltsorts liegen. Er bleibt
-        auf Ihrem Gerät und wird weder an mich noch an andere übertragen; Sie können ihn in Ihren
-        Browsereinstellungen löschen. Er ist für diese von Ihnen genutzte Funktion unbedingt erforderlich
-        (§ 25 Abs. 2 Nr. 2 TDDDG).
+        Damit die Karte beim Neuladen der Seite nicht zurückspringt, merkt sich Ihr Browser den aktuellen
+        Kartenausschnitt im Sitzungsspeicher dieses Tabs (Eintrag <code>view</code>: Mittelpunkt und Zoomstufe der
+        Karte). Wenn Sie "Mein Standort" genutzt haben, kann dieser Ausschnitt in der Nähe Ihres Aufenthaltsorts
+        liegen. Er bleibt auf Ihrem Gerät, wird weder an mich noch an andere übertragen und wird gelöscht, sobald
+        Sie den Tab oder Browser schließen. Er ist für die Karte, die Sie gerade nutzen, unbedingt erforderlich
+        (§ 25 Abs. 2 Nr. 2 TDDDG). Frühere Versionen der App haben diesen Eintrag dauerhaft im lokalen Speicher
+        abgelegt; die App löscht diese alte Kopie beim nächsten Aufruf.
       </p>
       <p>
         Die Schrift der App wird von dieser Seite selbst geladen, nicht von einem fremden Schriftdienst.
@@ -89,7 +104,8 @@
         Betriebssystem an OpenFreeMap. Nach Angaben von OpenFreeMap enthalten die normalen Zugriffsprotokolle keine
         IP-Adressen und es werden keine Cookies verwendet; Fehlerprotokolle können Ihre IP-Adresse enthalten und
         werden nach 7 Tagen gelöscht. Bei einem Sicherheitsvorfall (zum Beispiel einem Angriff) kann OpenFreeMap
-        IP-Adressen bis zu 30 Tage speichern. Details:
+        IP-Adressen bis zu 30 Tage speichern. OpenFreeMap kann die Karte über das Netz von Cloudflare ausliefern;
+        Cloudflare erhält dann dieselben technischen Daten. Details:
         <a href="https://openfreemap.org/privacy/" hreflang="en">Datenschutzerklärung von OpenFreeMap</a>
         (Englisch).
       </p>
@@ -98,7 +114,8 @@
         Kartenserver zu betreiben (Art. 6 Abs. 1 lit. f DSGVO).
       </p>
       <p>
-        <strong>Empfänger:</strong> Hyperknot Software Kft., Ungarn (OpenFreeMap).
+        <strong>Empfänger:</strong> Hyperknot Software Kft., Ungarn (OpenFreeMap), gegebenenfalls über deren
+        Dienstleister Cloudflare, Inc., USA (zertifiziert nach dem EU-US Data Privacy Framework).
       </p>
 
       <h2>5. „Mein Standort“</h2>
