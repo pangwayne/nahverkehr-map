@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ÖPNV Bonn live</title>
+    <link rel="stylesheet" href="/src/web/style.css" />
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>ÖPNV Bonn live</h1>
+        <p id="status">Checking connection...</p>
+      </div>
+      <button id="near-me" type="button">Near me</button>
+    </header>
+    <div id="map-wrap">
+      <main id="map"></main>
+      <section id="board" hidden aria-live="polite">
+        <div class="board-head">
+          <h2 id="board-title"></h2>
+          <button id="board-close" type="button" aria-label="Close">×</button>
+        </div>
+        <div id="board-body"></div>
+      </section>
+    </div>
+    <footer>
+      Data: <a href="https://transitous.org/sources/" target="_blank" rel="noopener">Transitous sources</a>
+      · © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>
+      · <a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a>
+      · <a href="https://github.com/pangwayne/nahverkehr-map" target="_blank" rel="noopener">Source code</a>
+      · <a href="https://www.pangwayne.com/imprint" target="_blank" rel="noopener">Imprint</a>
+      · <a href="/privacy" target="_blank" rel="noopener">Privacy</a>
+    </footer>
+    <script type="module" src="/src/web/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,522 @@
+// Tap a departure: info card (line, destination, delay, next stop) plus its whole route on the map,
+// every stop as a dot (passed stops faded), and the vehicle itself as a moving dot.
+// One /api/trip request, only while the card is open, refreshed every 60 s.
+
+import type { FeatureCollection, Point } from "geojson";
+import type * as maplibregl from "maplibre-gl";
+import { fetchTrip } from "./api";
+import type { StopRef } from "./board";
+import { delayLevel, formatClock, formatCountdown, formatDelay, platformLabel } from "./departures";
+import type { LonLat } from "./geo";
+import { type PanelUser, el, offsetClearOfPanel, openPanel, ownsPanel, renderPanel } from "./panel";
+import { resetStatus, setStatus } from "./status";
+import { type RouteStop, type TripProgress, type TripRoute, leaveMs, progressAt, reachMs, tripRoute } from "./trip";
+import { type PreparedTrip, type VehiclePosition, prepareRoute, vehicleAt } from "./vehicles";
+
+const POLL_MS = 60_000;
+const TICK_MS = 10_000; // countdowns and "passed" stops update
+const FRAME_MS = 200; // the vehicle dot moves 5 times per second: smooth enough, light on phones
+const FETCH_TIMEOUT_MS = 15_000;
+const STALE_AFTER_S = 120;
+const UNAVAILABLE_AFTER_S = 180; // older than this, the vehicle dot is hidden (never show old data as live)
+const FOCUS_MAX_ZOOM = 16;
+
+const VEHICLE_SOURCE = "trip-vehicle";
+const VEHICLE_LAYER = "vehicle-dot";
+const STOPS_FIRST_LAYER = "stop-selected"; // the route line goes under the stop layers
+const ROUTE_SOURCE = "trip-route";
+const ROUTE_STOPS_SOURCE = "trip-stops";
+
+const BUS_COLOR = "#4a5a6a";
+const TRAM_COLOR = "#1565c0";
+
+// A departure that was tapped. Line and color are shown until the trip details arrive;
+// `focus` is the stop it was tapped at, kept in view together with the vehicle.
+export interface TripRef {
+  tripId: string;
+  line: string;
+  color: string;
+  focus: LonLat | null;
+}
+
+export interface TripCard {
+  showTrip(ref: TripRef): void;
+}
+
+// `onStopTap`: a stop dot on the shown route was tapped (opens that stop's departure board).
+export function startTripCard(map: maplibregl.Map, onStopTap: (stop: StopRef) => void): TripCard {
+  const user: PanelUser = { onClose: cleanUp };
+
+  let tapped: TripRef | null = null;
+  let route: TripRoute | null = null;
+  let prepared: PreparedTrip | null = null;
+  let progress: TripProgress | null = null;
+  let fetchedAtMs: number | null = null;
+  let error: string | null = null;
+  let generation = 0; // bumps whenever the card changes, so late answers are ignored
+  let lastPollMs = 0;
+  let lastFrameMs = 0;
+  let showEarlier = false; // passed stops folded away until asked
+  let needsFocus = false; // move the map once, when the first trip details arrive
+
+  map.on("load", () => {
+    addLayers(map);
+    requestAnimationFrame(frame);
+  });
+
+  // A stop on the route: open its departure board, unless the vehicle or a regular stop dot is on top
+  // (a regular stop handles the tap itself; the vehicle needs nothing, its card is already open).
+  map.on("click", "trip-stop-dot", (e) => {
+    const above = [VEHICLE_LAYER, "stop-hit"].filter((id) => map.getLayer(id));
+    if (above.length && map.queryRenderedFeatures(e.point, { layers: above }).length) return;
+    const feature = e.features?.[0];
+    const props = feature?.properties;
+    if (!feature || typeof props?.["name"] !== "string") return;
+    const [lon, lat] = (feature.geometry as Point).coordinates as [number, number];
+    const stopId = typeof props["stopId"] === "string" && props["stopId"] ? props["stopId"] : null;
+    onStopTap({ stopId, name: props["name"], lon, lat });
+  });
+  map.on("mouseenter", "trip-stop-dot", () => (map.getCanvas().style.cursor = "pointer"));
+  map.on("mouseleave", "trip-stop-dot", () => (map.getCanvas().style.cursor = ""));
+
+  setInterval(() => {
+    if (!tapped || !ownsPanel(user)) return;
+    if (document.visibilityState === "visible" && Date.now() - lastPollMs >= POLL_MS) void refresh();
+    else update();
+  }, TICK_MS);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && tapped && Date.now() - lastPollMs >= POLL_MS) void refresh();
+  });
+
+  function open(t: TripRef): void {
+    openPanel(user);
+    generation++;
+    tapped = t;
+    route = null;
+    prepared = null;
+    progress = null;
+    fetchedAtMs = null;
+    error = null;
+    showEarlier = false;
+    needsFocus = true;
+    update();
+    void refresh();
+  }
+
+  // Called by the panel when it closes or the stop board takes it over.
+  function cleanUp(): void {
+    generation++;
+    tapped = null;
+    route = null;
+    prepared = null;
+    progress = null;
+    setRouteData(map, null, null);
+    setVehicleData(map, null, false, 0);
+    resetStatus();
+  }
+
+  // Move the vehicle dot, 5 times per second while a trip is open (the browser pauses this when hidden).
+  function frame(nowMs: DOMHighResTimeStamp): void {
+    requestAnimationFrame(frame);
+    if (!tapped || nowMs - lastFrameMs < FRAME_MS) return;
+    lastFrameMs = nowMs;
+    const now = Date.now();
+    setVehicleData(map, currentVehicle(now), ageS(now) > STALE_AFTER_S, progress?.delaySec ?? 0, tapped.color);
+  }
+
+  function ageS(now: number): number {
+    return fetchedAtMs === null ? Infinity : Math.max(0, (now - fetchedAtMs) / 1000);
+  }
+
+  function currentVehicle(now: number): VehiclePosition | null {
+    if (!prepared || ageS(now) > UNAVAILABLE_AFTER_S) return null;
+    return vehicleAt(prepared, now);
+  }
+
+  // Keep the tapped stop and the vehicle in view together, clear of the panel.
+  function focus(): void {
+    needsFocus = false;
+    const points: LonLat[] = [];
+    if (tapped?.focus) points.push(tapped.focus);
+    const v = currentVehicle(Date.now());
+    if (v) points.push([v.lon, v.lat]);
+    if (points.length) fitPoints(map, points, FOCUS_MAX_ZOOM);
+  }
+
+  async function refresh(): Promise<void> {
+    if (!tapped) return;
+    const gen = generation;
+    lastPollMs = Date.now();
+    try {
+      const res = await fetchTrip(tapped.tripId, AbortSignal.timeout(FETCH_TIMEOUT_MS));
+      if (gen !== generation) return;
+      const r = tripRoute(res.data);
+      if (!r) throw new Error("trip has no stops");
+      route = r;
+      prepared = prepareRoute(tapped.tripId, r);
+      fetchedAtMs = res.fetchedAtMs;
+      error = null;
+    } catch (err) {
+      if (gen !== generation) return;
+      error = String(err);
+    }
+    update();
+    if (needsFocus && route) focus();
+  }
+
+  function update(): void {
+    if (!tapped) return;
+    const now = Date.now();
+    progress = route ? progressAt(route.stops, now) : null;
+    setRouteData(map, route, progress, tapped.color);
+    render(now, progress);
+  }
+
+  function render(now: number, progress: TripProgress | null): void {
+    if (!tapped) return;
+    const title = route ? `${route.line} → ${route.headsign}` : `Line ${tapped.line}`;
+    const age = ageS(now);
+    setStatus(title, Number.isFinite(age) ? age : null, error !== null);
+    const parts: HTMLElement[] = [];
+
+    if (!route || !progress) {
+      parts.push(
+        el("p", error ? "board-note board-error" : "board-note", error ? "Trip details unavailable right now. Retrying..." : "Loading trip..."),
+      );
+      renderPanel(user, title, parts);
+      return;
+    }
+
+    parts.push(renderSummary(route, progress, now));
+
+    if (route.implausibleFrom !== null && !route.cancelled) {
+      const from = route.stops[route.implausibleFrom]!.name;
+      parts.push(el("p", "board-note board-warn", `Live times look wrong, showing timetable from ${from}`));
+    }
+
+    // Data age, like everywhere else. Never show old data as current.
+    if (error && age > STALE_AFTER_S) {
+      parts.push(el("p", "board-note board-error", "Trip details unavailable right now. Retrying..."));
+    } else if (Number.isFinite(age)) {
+      const old = age > STALE_AFTER_S;
+      const text = `updated ${Math.round(age)} s ago${old ? " · data is old" : ""}`;
+      parts.push(el("p", old ? "board-note board-error" : "board-note", text));
+    }
+
+    // Passed stops are folded away (all but the last one), so the summary stays at the top.
+    const firstShown = showEarlier || progress.next === null ? 0 : Math.max(0, progress.next - 1);
+    const actions = el("div", "trip-actions");
+    const zoomBtn = el("button", "link-button", "Show whole route");
+    const shownRoute = route;
+    zoomBtn.addEventListener("click", () => fitRoute(map, shownRoute));
+    actions.append(zoomBtn);
+    if (firstShown > 0) {
+      const earlierBtn = el("button", "link-button", `Show ${firstShown} earlier stops`);
+      earlierBtn.addEventListener("click", () => {
+        showEarlier = true;
+        update();
+      });
+      actions.append(earlierBtn);
+    }
+    parts.push(actions);
+
+    const list = el("ol", "trip-stops");
+    for (let i = firstShown; i < route.stops.length; i++) {
+      list.append(renderStop(route.stops[i]!, i, progress, route));
+    }
+    parts.push(list);
+
+    renderPanel(user, title, parts);
+  }
+
+  return {
+    showTrip(ref: TripRef): void {
+      open(ref);
+    },
+  };
+}
+
+function renderSummary(route: TripRoute, p: TripProgress, now: number): HTMLElement {
+  const box = el("div", "trip-summary");
+
+  const badge = el("span", "line", route.line);
+  badge.style.backgroundColor = route.color ?? (route.mode === "BUS" ? BUS_COLOR : TRAM_COLOR);
+  badge.style.color = route.textColor ?? "#ffffff";
+
+  const status = el("span", "trip-status");
+  if (route.cancelled) {
+    status.append(el("b", "cancelled-text", "This trip is cancelled"));
+  } else if (!route.realTime) {
+    status.append(el("span", "", "Timetable only, no live data"));
+  } else if (onTimetable(route, p.next ?? route.stops.length - 1)) {
+    status.append(el("span", "", "Timetable only"));
+  } else {
+    const min = Math.round(p.delaySec / 60);
+    const text = min === 0 ? "On time" : min > 0 ? `${min} min late` : `${-min} min early`;
+    status.append(el("b", `delay ${delayLevel(p.delaySec, true)}`, text));
+  }
+  box.append(badge, status);
+
+  const where = el("p", "trip-where", nextText(route, p, now));
+  const wrap = el("div", "");
+  wrap.append(box, where);
+  return wrap;
+}
+
+function nextText(route: TripRoute, p: TripProgress, now: number): string {
+  if (p.next === null) {
+    const last = route.stops[route.stops.length - 1];
+    return last ? `Trip ended at ${last.name}` : "Trip ended";
+  }
+  const s = route.stops[p.next]!;
+  const label = platformLabel(s.stopId, route.mode);
+  const platform = label ? ` (${label})` : "";
+  if (p.state === "before") return `Starts at ${s.name}${platform} · ${formatCountdown(leaveMs(s)!, now)}`;
+  if (p.state === "atStop") return `At ${s.name}${platform} now · leaves ${formatCountdown(leaveMs(s)!, now)}`;
+  return `Next stop: ${s.name}${platform} · ${formatCountdown(reachMs(s)!, now)}`;
+}
+
+function renderStop(s: RouteStop, i: number, p: TripProgress, route: TripRoute): HTMLElement {
+  const passed = p.next === null || i < p.next;
+  const classes = ["trip-stop", passed ? "passed" : "", i === p.next ? "next" : "", s.cancelled ? "cancelled" : ""];
+  const li = el("li", classes.filter(Boolean).join(" "));
+
+  // The time that matters for a passenger: departure, or arrival at the last stop.
+  const t = leaveMs(s);
+  const sched = s.schedDepMs ?? s.schedArrMs;
+  li.append(el("span", "time", t === null ? "" : formatClock(t)));
+
+  const name = el("span", "name", s.name);
+  const platform = platformLabel(s.stopId, route.mode);
+  if (platform) name.append(el("small", "", ` ${platform}`));
+  li.append(name);
+
+  if (route.realTime && !s.cancelled && onTimetable(route, i)) {
+    li.append(el("span", "delay timetable", "timetable"));
+    return li;
+  }
+  const delaySec = t !== null && sched !== null ? (t - sched) / 1000 : 0;
+  const delay = route.realTime && !s.cancelled ? formatDelay(delaySec) : "";
+  li.append(el("span", delay ? `delay ${delayLevel(delaySec, true)}` : "delay", s.cancelled ? "cancelled" : delay));
+  return li;
+}
+
+// Stop `i` shows timetable times because the live ones looked wrong (Phase 4.8).
+function onTimetable(route: TripRoute, i: number): boolean {
+  return route.implausibleFrom !== null && i >= route.implausibleFrom;
+}
+
+function fitRoute(map: maplibregl.Map, route: TripRoute): void {
+  if (route.path.length >= 2) fitPoints(map, route.path);
+}
+
+// Show all points, kept clear of the panel (offset is up on phones, right on wide screens).
+function fitPoints(map: maplibregl.Map, points: LonLat[], maxZoom?: number): void {
+  let [minLon, minLat] = points[0]!;
+  let [maxLon, maxLat] = points[0]!;
+  for (const [lon, lat] of points) {
+    minLon = Math.min(minLon, lon);
+    maxLon = Math.max(maxLon, lon);
+    minLat = Math.min(minLat, lat);
+    maxLat = Math.max(maxLat, lat);
+  }
+  const [offsetX, offsetY] = offsetClearOfPanel();
+  map.fitBounds(
+    [
+      [minLon, minLat],
+      [maxLon, maxLat],
+    ],
+    { padding: { top: 40, right: 40, left: 40 + offsetX * 2, bottom: 40 - offsetY * 2 }, maxZoom },
+  );
+}
+
+// Ring color shows punctuality (section 5.3 of the guidelines); grey when unknown or old.
+function ringColor(realTime: boolean, delaySec: number, stale: boolean): string {
+  if (stale || !realTime) return "#9e9e9e";
+  const late = Math.abs(delaySec);
+  if (late < 60) return "#2e7d32";
+  if (late < 300) return "#f57c00";
+  return "#c62828";
+}
+
+function setVehicleData(
+  map: maplibregl.Map,
+  v: VehiclePosition | null,
+  stale: boolean,
+  delaySec: number,
+  fallbackColor = TRAM_COLOR,
+): void {
+  const data: FeatureCollection = {
+    type: "FeatureCollection",
+    features: v
+      ? [
+          {
+            type: "Feature",
+            geometry: { type: "Point", coordinates: [v.lon, v.lat] },
+            properties: {
+              line: v.line,
+              isTram: v.mode !== "BUS",
+              fill: v.color ?? (v.mode === "BUS" ? BUS_COLOR : fallbackColor),
+              ring: ringColor(v.realTime, delaySec, stale),
+              // Schedule-only and old data is drawn faded ("estimated").
+              opacity: stale || !v.realTime ? 0.45 : 1,
+            },
+          },
+        ]
+      : [],
+  };
+  map.getSource<maplibregl.GeoJSONSource>(VEHICLE_SOURCE)?.setData(data);
+}
+
+function setRouteData(
+  map: maplibregl.Map,
+  route: TripRoute | null,
+  progress: TripProgress | null,
+  fallbackColor = TRAM_COLOR,
+): void {
+  const color = route?.color ?? (route?.mode === "BUS" ? BUS_COLOR : fallbackColor);
+  const passed = (i: number) => progress !== null && (progress.next === null || i < progress.next);
+  const line: FeatureCollection = {
+    type: "FeatureCollection",
+    features:
+      route && route.path.length >= 2
+        ? [{ type: "Feature", geometry: { type: "LineString", coordinates: route.path }, properties: { color } }]
+        : [],
+  };
+  const stops: FeatureCollection = {
+    type: "FeatureCollection",
+    features: route
+      ? route.stops.map((s, i) => ({
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [s.lon, s.lat] },
+          properties: { stopId: s.stopId ?? "", name: s.name, color, passed: passed(i), next: progress?.next === i },
+        }))
+      : [],
+  };
+  map.getSource<maplibregl.GeoJSONSource>(ROUTE_SOURCE)?.setData(line);
+  map.getSource<maplibregl.GeoJSONSource>(ROUTE_STOPS_SOURCE)?.setData(stops);
+}
+
+function addLayers(map: maplibregl.Map): void {
+  const empty: FeatureCollection = { type: "FeatureCollection", features: [] };
+  map.addSource(ROUTE_SOURCE, { type: "geojson", data: empty });
+  map.addSource(ROUTE_STOPS_SOURCE, { type: "geojson", data: empty });
+  map.addSource(VEHICLE_SOURCE, { type: "geojson", data: empty });
+
+  const underStops = map.getLayer(STOPS_FIRST_LAYER) ? STOPS_FIRST_LAYER : undefined;
+
+  map.addLayer(
+    {
+      id: "trip-route-casing",
+      type: "line",
+      source: ROUTE_SOURCE,
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: { "line-color": "#ffffff", "line-width": ["interpolate", ["linear"], ["zoom"], 10, 7, 16, 11] },
+    },
+    underStops,
+  );
+  map.addLayer(
+    {
+      id: "trip-route-line",
+      type: "line",
+      source: ROUTE_SOURCE,
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: {
+        "line-color": ["get", "color"],
+        "line-width": ["interpolate", ["linear"], ["zoom"], 10, 4, 16, 7],
+        "line-opacity": 0.9,
+      },
+    },
+    underStops,
+  );
+
+  map.addLayer({
+    id: "trip-stop-dot",
+    type: "circle",
+    source: ROUTE_STOPS_SOURCE,
+    paint: {
+      "circle-radius": ["interpolate", ["linear"], ["zoom"], 11, ["case", ["get", "next"], 5, 3], 16, ["case", ["get", "next"], 8, 6]],
+      "circle-color": "#ffffff",
+      "circle-stroke-color": ["get", "color"],
+      "circle-stroke-width": ["case", ["get", "next"], 3, 2],
+      "circle-opacity": ["case", ["get", "passed"], 0.5, 1],
+      "circle-stroke-opacity": ["case", ["get", "passed"], 0.4, 1],
+    },
+  });
+  map.addLayer({
+    id: "trip-stop-label",
+    type: "symbol",
+    source: ROUTE_STOPS_SOURCE,
+    minzoom: 13,
+    layout: {
+      "text-field": ["get", "name"],
+      "text-font": ["Noto Sans Regular"],
+      "text-size": 11,
+      "text-anchor": "left",
+      "text-offset": [0.9, 0],
+      "text-optional": true,
+    },
+    paint: {
+      "text-color": "#37474f",
+      "text-halo-color": "#ffffff",
+      "text-halo-width": 1.5,
+      "text-opacity": ["case", ["get", "passed"], 0.5, 1],
+    },
+  });
+
+  // The vehicle on top of everything: yellow halo, dot with punctuality ring, line number.
+  map.addLayer({
+    id: "vehicle-selected",
+    type: "circle",
+    source: VEHICLE_SOURCE,
+    paint: {
+      "circle-radius": ["interpolate", ["linear"], ["zoom"], 11, 9, 14, 15, 17, 20],
+      "circle-color": "#ffd54f",
+      "circle-opacity": ["*", 0.85, ["get", "opacity"]],
+    },
+  });
+
+  // Trams and trains are drawn a bit larger than buses.
+  const radius: maplibregl.ExpressionSpecification = [
+    "interpolate",
+    ["linear"],
+    ["zoom"],
+    11,
+    ["case", ["get", "isTram"], 5, 4],
+    14,
+    ["case", ["get", "isTram"], 10, 8],
+    17,
+    ["case", ["get", "isTram"], 14, 12],
+  ];
+  map.addLayer({
+    id: VEHICLE_LAYER,
+    type: "circle",
+    source: VEHICLE_SOURCE,
+    paint: {
+      "circle-radius": radius,
+      "circle-color": ["get", "fill"],
+      "circle-opacity": ["get", "opacity"],
+      "circle-stroke-color": ["get", "ring"],
+      "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 11, 1.5, 14, 3],
+      "circle-stroke-opacity": ["get", "opacity"],
+    },
+  });
+  map.addLayer({
+    id: "vehicle-label",
+    type: "symbol",
+    source: VEHICLE_SOURCE,
+    minzoom: 12.5,
+    layout: {
+      "text-field": ["get", "line"],
+      "text-font": ["Noto Sans Bold"],
+      "text-size": ["interpolate", ["linear"], ["zoom"], 13, 9, 17, 13],
+      "text-allow-overlap": true,
+      "text-ignore-placement": true,
+    },
+    paint: {
+      "text-color": "#ffffff",
+      "text-halo-color": "rgba(0, 0, 0, 0.6)",
+      "text-halo-width": 1,
+    },
+  });
+}

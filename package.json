@@ -1,0 +1,29 @@
+{
+  "name": "nahverkehr-map",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Live departures for Bonn, with the route and estimated position of a tapped vehicle",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "wrangler types && tsc -p tsconfig.web.json && tsc -p tsconfig.worker.json",
+    "build": "npm run typecheck && vite build",
+    "preview": "npm run build && vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "deploy": "npm run build && wrangler deploy",
+    "cf-typegen": "wrangler types"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.64.0",
+    "@types/geojson": "^7946.0.16",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5",
+    "wrangler": "^4.151.2"
+  },
+  "dependencies": {
+    "maplibre-gl": "^6.12.0"
+  }
+}
