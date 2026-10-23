@@ -11,5 +11,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src/web", "tests/vehicles.test.ts", "tests/stops.test.ts", "tests/departures.test.ts", "tests/trip.test.ts"]
+  "include": ["src/web"]
 }

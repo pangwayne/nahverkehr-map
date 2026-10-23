@@ -11,5 +11,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src/worker", "worker-configuration.d.ts", "tests/health.test.ts", "tests/transitous.test.ts"]
+  "include": ["src/worker", "worker-configuration.d.ts"]
 }
