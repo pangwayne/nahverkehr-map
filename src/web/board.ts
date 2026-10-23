@@ -7,14 +7,15 @@ import * as maplibregl from "maplibre-gl";
 import { fetchDepartures, fetchStops } from "./api";
 import {
   type DepartureRow,
-  delayLevel,
+  delayState,
   formatCountdown,
-  formatDelay,
   mergeRows,
+  modeLabel,
+  shortName,
   toRows,
   upcoming,
 } from "./departures";
-import { type PanelUser, el, offsetClearOfPanel, openPanel, ownsPanel, renderPanel } from "./panel";
+import { type PanelUser, ageLine, el, offsetClearOfPanel, openPanel, ownsPanel, renderPanel } from "./panel";
 import { t, onLangChange } from "./i18n";
 import { ageText, resetStatus, setStatus } from "./status";
 import { type Station, groupStations, matchStation, nearestStations } from "./stops";
@@ -293,7 +294,7 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
       parts.push(el("p", "board-note board-error", t().departuresUnavailable));
     } else if (ageS !== null) {
       const old = ageS > STALE_AFTER_S;
-      parts.push(el("p", old ? "board-note board-error" : "board-note", ageText(ageS, old)));
+      parts.push(ageLine(`${ageText(ageS, old)} · ${t().everyMinute}`, old));
     }
     renderPanel(user, heading, parts);
   }
@@ -327,22 +328,22 @@ function renderRow(
   badge.style.backgroundColor = color;
   badge.style.color = r.textColor ?? "#ffffff";
 
-  const dest = el("span", "dest", r.headsign);
+  // Destination, then what it is and where: "Stadtbahn · Colmantstr./Hbf", "Zug · Gleis 2".
+  const dest = el("span", "dest");
+  dest.append(el("span", "dest-name", shortName(r.headsign)));
   const details: string[] = [];
-  if (r.stopName !== sameStop) details.push(r.stopName); // e.g. the neighbouring "Colmantstr./Hbf"
+  const kind = modeLabel(r.mode);
+  if (kind) details.push(kind);
   if (r.platform) details.push(r.platform);
+  if (r.stopName !== sameStop) details.push(r.stopName); // e.g. the neighbouring "Colmantstr./Hbf"
   if (r.extra) details.push(t().extraTrip);
-  if (!r.realTime && !r.cancelled) details.push(t().timetableOnly);
   if (details.length) dest.append(el("small", "", details.join(" · ")));
 
+  // Countdown, and under it the live state: "+3 live", "pünktlich", "nur Fahrplan", "fällt aus".
   const when = el("span", "when");
-  if (r.cancelled) {
-    when.append(el("b", "", t().cancelled));
-  } else {
-    when.append(el("b", "", formatCountdown(r.depMs, nowMs)));
-    const delay = formatDelay(r.delaySec);
-    if (delay && r.realTime) when.append(el("span", `delay ${delayLevel(r.delaySec, r.realTime)}`, delay));
-  }
+  when.append(el("b", "", formatCountdown(r.depMs, nowMs))); // struck through when cancelled (style.css)
+  const state = delayState(r.delaySec, r.realTime, r.cancelled);
+  when.append(el("small", `state ${state.level}`, state.text));
 
   li.append(badge, dest, when);
 

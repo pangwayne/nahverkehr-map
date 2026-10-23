@@ -33,10 +33,19 @@ export function openPanel(user: PanelUser): void {
 }
 
 // Replace the content. Ignored if `user` no longer owns the panel (a late answer, say).
-export function renderPanel(user: PanelUser, title: string, nodes: Node[]): void {
+// `title`: plain text, or nodes (the trip card puts the line badge in front of the destination).
+export function renderPanel(user: PanelUser, title: string | Node[], nodes: Node[]): void {
   if (owner !== user) return;
-  titleEl.textContent = title;
+  if (typeof title === "string") titleEl.textContent = title;
+  else titleEl.replaceChildren(...title);
   bodyEl.replaceChildren(...nodes);
+}
+
+// "vor 8 s aktualisiert · neu jede Minute" with a dot: green while fresh, red once the data is old.
+export function ageLine(text: string, old: boolean): HTMLElement {
+  const p = el("p", old ? "panel-age old" : "panel-age");
+  p.append(el("span", "age-dot"), document.createTextNode(text));
+  return p;
 }
 
 export function ownsPanel(user: PanelUser): boolean {

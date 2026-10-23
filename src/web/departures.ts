@@ -169,3 +169,28 @@ export function formatCountdown(depMs: number, nowMs: number): string {
   if (min < 60) return t().inMin(min);
   return berlinClock.format(depMs);
 }
+
+// What kind of vehicle, in words ("Stadtbahn", "Zug"); null when it is nothing we name.
+export function modeLabel(mode: Mode): string | null {
+  if (mode === "TRAM") return t().modeTram;
+  if (mode === "SUBWAY") return t().modeLightRail; // Bonn's Stadtbahn
+  if (mode === "BUS") return t().modeBus;
+  if (mode === "SUBURBAN") return t().modeSBahn;
+  if (RAIL_MODES.has(mode)) return t().modeTrain;
+  return null;
+}
+
+// "Bonn Hbf" stays, "Bonn Auerberg Kopenhagener Str." becomes "Auerberg Kopenhagener Str.":
+// on a Bonn map the city adds nothing. Other towns keep their name.
+export function shortName(name: string): string {
+  const rest = name.startsWith("Bonn ") ? name.slice(5).trim() : "";
+  return rest.length > 3 ? rest : name;
+}
+
+// The small line under the countdown: "+3 live", "pünktlich", "nur Fahrplan" or "fällt aus".
+export function delayState(delaySec: number, realTime: boolean, cancelled: boolean): { text: string; level: DelayLevel } {
+  if (cancelled) return { text: t().cancelled, level: "verylate" };
+  if (!realTime) return { text: t().timetableOnly, level: "unknown" };
+  const delay = formatDelay(delaySec);
+  return { text: delay ? t().liveDelay(delay) : t().onTimeShort, level: delayLevel(delaySec, true) };
+}

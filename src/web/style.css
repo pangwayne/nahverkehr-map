@@ -353,7 +353,7 @@ html[lang="en"] .flag-en {
   color: var(--ink);
   border-radius: 16px 16px 0 0;
   box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.25);
-  padding: 0 16px 8px;
+  padding: 0 16px; /* no bottom padding: the trip card's sticky footer must sit flush with the edge */
 }
 
 #board[hidden] {
@@ -374,28 +374,58 @@ html[lang="en"] .flag-en {
 .board-head {
   position: sticky;
   top: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 0 6px;
+  gap: 12px;
+  padding: 14px 0 8px;
   background: var(--surface);
 }
 
 .board-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
   margin: 0;
-  font-size: 1.1rem;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
   letter-spacing: -0.01em;
+  line-height: 1.25;
 }
 
 #board-close {
-  border: none;
-  background: none;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--hover);
   color: inherit;
-  font-size: 1.6rem;
+  font-size: 1.5rem;
   line-height: 1;
-  padding: 0 4px;
   cursor: pointer;
+}
+
+#board-close:hover {
+  background: color-mix(in srgb, var(--ink) 12%, transparent);
+}
+
+/* Line badges: the operator's colour, same size everywhere. */
+.line {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 44px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0;
 }
 
 .rows {
@@ -406,10 +436,10 @@ html[lang="en"] .flag-en {
 
 .row {
   display: grid;
-  grid-template-columns: 3.2rem 1fr auto;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
-  padding: 6px 0;
+  gap: 12px;
+  padding: 10px 0;
   border-bottom: 1px solid var(--border);
 }
 
@@ -417,8 +447,8 @@ html[lang="en"] .flag-en {
 .row.tappable {
   cursor: pointer;
   margin: 0 -8px;
-  padding: 6px 8px;
-  border-radius: 6px;
+  padding: 10px 8px;
+  border-radius: 8px;
 }
 
 .row.tappable:hover,
@@ -427,116 +457,153 @@ html[lang="en"] .flag-en {
   outline: none;
 }
 
-.row .line {
-  justify-self: start;
-  min-width: 2.2rem;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-weight: 700;
-  font-size: 0.85rem;
-  text-align: center;
-}
-
 .row .dest {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
+.dest-name {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .row .dest small {
-  opacity: 0.6;
+  margin-top: 1px;
+  font-size: 12px;
+  color: var(--ink-soft);
 }
 
 .row .when {
-  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   white-space: nowrap;
 }
 
-.row .delay {
-  margin-left: 6px;
-  font-weight: 700;
+.row .when b {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
 }
 
-.delay.late {
+/* Live state under the countdown, and the chips on the trip card: coloured by punctuality. */
+.state {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ontime {
+  color: var(--ok);
+}
+
+.late {
   color: var(--late);
 }
 
-.delay.verylate {
+.verylate {
   color: var(--verylate);
 }
 
-.row.cancelled .dest,
-.row.cancelled .line {
+.state.unknown {
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+
+.row.cancelled .dest-name,
+.row.cancelled .line,
+.row.cancelled .when b {
   text-decoration: line-through;
   opacity: 0.5;
 }
 
-.row.cancelled .when {
-  color: var(--verylate);
-}
-
 .board-note {
-  margin: 6px 0;
-  font-size: 0.8rem;
-  opacity: 0.7;
+  margin: 8px 0;
+  font-size: 13px;
+  color: var(--ink-soft);
 }
 
 .board-warn {
   color: var(--late);
-  opacity: 1;
 }
 
 .board-error {
   color: var(--verylate);
-  opacity: 1;
   font-weight: 600;
 }
 
-/* Vehicle card: summary, then the trip's stops (passed ones faded, next one bold). */
-.trip-summary {
+/* "vor 8 s aktualisiert": green dot while fresh, red when old. */
+.panel-age {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 4px;
+  gap: 8px;
+  margin: 10px 0 12px;
+  font-size: 12px;
+  color: var(--ink-soft);
 }
 
-.trip-summary .line {
-  min-width: 2.2rem;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-weight: 700;
-  font-size: 0.85rem;
-  text-align: center;
+.age-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
 }
 
-.trip-where {
-  margin: 6px 0;
-  font-size: 0.9rem;
-}
-
-.cancelled-text {
+.panel-age.old {
   color: var(--verylate);
+  font-weight: 600;
 }
 
-.delay.ontime {
-  color: var(--ok);
+.panel-age.old .age-dot {
+  background: var(--verylate);
 }
 
-.trip-actions {
+/* Trip card: chips, the estimated-position note, then the stops as a timeline. */
+.trip-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 16px;
-  margin: 2px 0 4px;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+
+.chip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.chip.unknown,
+.chip.where {
+  color: var(--ink);
+  background: var(--hover);
+  font-weight: 500;
+}
+
+.trip-estimate {
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .link-button {
   border: none;
   background: none;
-  padding: 0;
+  padding: 4px 0;
   margin: 0;
   color: var(--accent);
   font: inherit;
-  font-size: 0.85rem;
+  font-size: 13px;
+  font-weight: 600;
   text-decoration: underline;
   cursor: pointer;
 }
@@ -548,37 +615,92 @@ html[lang="en"] .flag-en {
 }
 
 .trip-stop {
+  position: relative;
   display: grid;
-  grid-template-columns: 3rem 1fr auto;
+  grid-template-columns: 44px 14px minmax(0, 1fr) auto;
+  align-items: center;
   gap: 8px;
-  padding: 4px 0;
-  font-size: 0.9rem;
-  border-bottom: 1px solid var(--border);
+  min-height: 38px;
+  font-size: 14px;
+}
+
+/* The line between the dots, in the line's colour (set as --line on the list). */
+.trip-stop::before {
+  content: "";
+  position: absolute;
+  left: 58px; /* time column + gap + half the dot */
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--line, var(--ink-soft));
+}
+
+.trip-stop:first-child::before {
+  top: 50%;
+}
+
+.trip-stop:last-child::before {
+  bottom: 50%;
+}
+
+.trip-stop.passed::before {
+  background: var(--border);
+}
+
+.stop-dot {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  justify-self: center;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 3px solid var(--line, var(--ink-soft));
+}
+
+.trip-stop.passed .stop-dot {
+  background: var(--border);
+  border-color: transparent;
+}
+
+.trip-stop.next .stop-dot {
+  width: 14px;
+  height: 14px;
+  border-color: var(--ink);
 }
 
 .trip-stop .time {
   font-variant-numeric: tabular-nums;
 }
 
+.trip-stop .name {
+  padding: 8px 0;
+  line-height: 1.3;
+}
+
 .trip-stop .name small {
-  opacity: 0.6;
+  color: var(--ink-soft);
 }
 
 .trip-stop .delay {
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .trip-stop .delay.timetable {
   font-weight: 400;
-  font-size: 0.75rem;
-  opacity: 0.6;
+  color: var(--ink-soft);
 }
 
-.trip-stop.passed {
-  opacity: 0.45;
+.trip-stop.passed .time,
+.trip-stop.passed .name {
+  color: var(--ink-soft);
 }
 
-.trip-stop.next {
+.trip-stop.next .time,
+.trip-stop.next .name {
   font-weight: 700;
 }
 
@@ -588,6 +710,26 @@ html[lang="en"] .flag-en {
 
 .trip-stop.cancelled .delay {
   color: var(--verylate);
+}
+
+/* Data age and "Ganze Strecke zeigen" stay visible at the bottom while the stops scroll. */
+.trip-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin-top: 6px;
+  padding: 6px 0 10px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.trip-foot .panel-age {
+  margin: 0;
 }
 
 /* "You are here" for Near me. */

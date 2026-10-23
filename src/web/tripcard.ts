@@ -6,9 +6,9 @@ import type { FeatureCollection, Point } from "geojson";
 import type * as maplibregl from "maplibre-gl";
 import { fetchTrip } from "./api";
 import type { StopRef } from "./board";
-import { delayLevel, formatClock, formatCountdown, formatDelay, platformLabel } from "./departures";
+import { delayLevel, formatClock, formatCountdown, formatDelay, platformLabel, shortName } from "./departures";
 import type { LonLat } from "./geo";
-import { type PanelUser, el, offsetClearOfPanel, openPanel, ownsPanel, renderPanel } from "./panel";
+import { type PanelUser, ageLine, el, offsetClearOfPanel, openPanel, ownsPanel, renderPanel } from "./panel";
 import { t, onLangChange } from "./i18n";
 import { ageText, resetStatus, setStatus } from "./status";
 import { type RouteStop, type TripProgress, type TripRoute, leaveMs, progressAt, reachMs, tripRoute } from "./trip";
@@ -178,9 +178,14 @@ export function startTripCard(map: maplibregl.Map, onStopTap: (stop: StopRef) =>
 
   function render(now: number, progress: TripProgress | null): void {
     if (!tapped) return;
-    const title = route ? `${route.line} → ${route.headsign}` : t().line(tapped.line);
+    const statusTitle = route ? `${route.line} → ${route.headsign}` : t().line(tapped.line);
     const age = ageS(now);
-    setStatus(title, Number.isFinite(age) ? age : null, error !== null);
+    setStatus(statusTitle, Number.isFinite(age) ? age : null, error !== null);
+    // Panel title: the line badge, then where it goes.
+    const title = [
+      lineBadge(route?.line ?? tapped.line, route ? routeColor(route) : tapped.color, route?.textColor ?? null),
+      el("span", "", route ? shortName(route.headsign) : "…"),
+    ];
     const parts: HTMLElement[] = [];
 
     if (!route || !progress) {
@@ -192,42 +197,50 @@ export function startTripCard(map: maplibregl.Map, onStopTap: (stop: StopRef) =>
     }
 
     parts.push(renderSummary(route, progress, now));
+    // The dot on the map is worked out, not tracked: say so while it is shown.
+    if (!route.cancelled && progress.next !== null) {
+      const note = el("p", "trip-estimate");
+      note.append(el("strong", "", t().estimatedTitle), document.createTextNode(` ${t().estimatedBody}`));
+      parts.push(note);
+    }
 
     if (route.implausibleFrom !== null && !route.cancelled) {
       const from = route.stops[route.implausibleFrom]!.name;
       parts.push(el("p", "board-note board-warn", t().implausible(from)));
     }
 
-    // Data age, like everywhere else. Never show old data as current.
-    if (error && age > STALE_AFTER_S) {
-      parts.push(el("p", "board-note board-error", t().tripUnavailable));
-    } else if (Number.isFinite(age)) {
-      const old = age > STALE_AFTER_S;
-      parts.push(el("p", old ? "board-note board-error" : "board-note", ageText(age, old)));
-    }
+    if (error && age > STALE_AFTER_S) parts.push(el("p", "board-note board-error", t().tripUnavailable));
 
     // Passed stops are folded away (all but the last one), so the summary stays at the top.
     const firstShown = showEarlier || progress.next === null ? 0 : Math.max(0, progress.next - 1);
-    const actions = el("div", "trip-actions");
-    const zoomBtn = el("button", "link-button", t().wholeRoute);
-    const shownRoute = route;
-    zoomBtn.addEventListener("click", () => fitRoute(map, shownRoute));
-    actions.append(zoomBtn);
     if (firstShown > 0) {
       const earlierBtn = el("button", "link-button", t().earlierStops(firstShown));
       earlierBtn.addEventListener("click", () => {
         showEarlier = true;
         update();
       });
-      actions.append(earlierBtn);
+      parts.push(earlierBtn);
     }
-    parts.push(actions);
 
+    // The stops as a timeline in the line's colour.
     const list = el("ol", "trip-stops");
+    list.style.setProperty("--line", routeColor(route));
     for (let i = firstShown; i < route.stops.length; i++) {
       list.append(renderStop(route.stops[i]!, i, progress, route));
     }
     parts.push(list);
+
+    // Stays at the bottom of the panel: data age (never show old data as current) and the whole route.
+    const foot = el("div", "trip-foot");
+    if (Number.isFinite(age)) {
+      const old = age > STALE_AFTER_S;
+      foot.append(ageLine(ageText(age, old), old));
+    }
+    const zoomBtn = el("button", "link-button", t().wholeRoute);
+    const shownRoute = route;
+    zoomBtn.addEventListener("click", () => fitRoute(map, shownRoute));
+    foot.append(zoomBtn);
+    parts.push(foot);
 
     renderPanel(user, title, parts);
   }
@@ -239,44 +252,47 @@ export function startTripCard(map: maplibregl.Map, onStopTap: (stop: StopRef) =>
   };
 }
 
+function routeColor(route: TripRoute): string {
+  return route.color ?? (route.mode === "BUS" ? BUS_COLOR : TRAM_COLOR);
+}
+
+function lineBadge(line: string, color: string, textColor: string | null): HTMLElement {
+  const badge = el("span", "line", line);
+  badge.style.backgroundColor = color;
+  badge.style.color = textColor ?? "#ffffff";
+  return badge;
+}
+
+// Two chips: how late it is, and where it is now.
 function renderSummary(route: TripRoute, p: TripProgress, now: number): HTMLElement {
-  const box = el("div", "trip-summary");
-
-  const badge = el("span", "line", route.line);
-  badge.style.backgroundColor = route.color ?? (route.mode === "BUS" ? BUS_COLOR : TRAM_COLOR);
-  badge.style.color = route.textColor ?? "#ffffff";
-
-  const status = el("span", "trip-status");
+  const box = el("div", "trip-chips");
   if (route.cancelled) {
-    status.append(el("b", "cancelled-text", t().tripCancelled));
+    box.append(el("span", "chip verylate", t().tripCancelled));
   } else if (!route.realTime) {
-    status.append(el("span", "", t().noLiveData));
+    box.append(el("span", "chip unknown", t().noLiveData));
   } else if (onTimetable(route, p.next ?? route.stops.length - 1)) {
-    status.append(el("span", "", t().timetableOnlyCap));
+    box.append(el("span", "chip unknown", t().timetableOnlyCap));
   } else {
     const min = Math.round(p.delaySec / 60);
     const text = min === 0 ? t().onTime : min > 0 ? t().minLate(min) : t().minEarly(-min);
-    status.append(el("b", `delay ${delayLevel(p.delaySec, true)}`, text));
+    box.append(el("span", `chip ${delayLevel(p.delaySec, true)}`, text));
   }
-  box.append(badge, status);
-
-  const where = el("p", "trip-where", nextText(route, p, now));
-  const wrap = el("div", "");
-  wrap.append(box, where);
-  return wrap;
+  box.append(el("span", "chip where", nextText(route, p, now)));
+  return box;
 }
 
 function nextText(route: TripRoute, p: TripProgress, now: number): string {
   if (p.next === null) {
     const last = route.stops[route.stops.length - 1];
-    return last ? t().tripEndedAt(last.name) : t().tripEnded;
+    return last ? t().tripEndedAt(shortName(last.name)) : t().tripEnded;
   }
   const s = route.stops[p.next]!;
   const label = platformLabel(s.stopId, route.mode);
   const platform = label ? ` (${label})` : "";
-  if (p.state === "before") return t().startsAt(`${s.name}${platform}`, formatCountdown(leaveMs(s)!, now));
-  if (p.state === "atStop") return t().atStopNow(`${s.name}${platform}`, formatCountdown(leaveMs(s)!, now));
-  return t().nextStop(`${s.name}${platform}`, formatCountdown(reachMs(s)!, now));
+  const name = shortName(s.name);
+  if (p.state === "before") return t().startsAt(`${name}${platform}`, formatCountdown(leaveMs(s)!, now));
+  if (p.state === "atStop") return t().atStopNow(`${name}${platform}`, formatCountdown(leaveMs(s)!, now));
+  return t().nextStop(`${name}${platform}`, formatCountdown(reachMs(s)!, now));
 }
 
 function renderStop(s: RouteStop, i: number, p: TripProgress, route: TripRoute): HTMLElement {
@@ -288,8 +304,9 @@ function renderStop(s: RouteStop, i: number, p: TripProgress, route: TripRoute):
   const leave = leaveMs(s);
   const sched = s.schedDepMs ?? s.schedArrMs;
   li.append(el("span", "time", leave === null ? "" : formatClock(leave)));
+  li.append(el("span", "stop-dot")); // on the timeline: grey when passed, ringed for the next stop
 
-  const name = el("span", "name", s.name);
+  const name = el("span", "name", shortName(s.name));
   const platform = platformLabel(s.stopId, route.mode);
   if (platform) name.append(el("small", "", ` ${platform}`));
   li.append(name);
