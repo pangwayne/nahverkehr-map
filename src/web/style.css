@@ -745,12 +745,12 @@ html[lang="en"] .flag-en {
     0 1px 4px rgba(0, 0, 0, 0.35);
 }
 
-/* Highlighted stops: a mint ring plus a pulse that grows and fades. Only transform and opacity change,
+/* Highlighted stops: a green dot with a black outline, and a green glow that grows and fades. Only transform and opacity change,
    so the browser animates it without repainting the map. Taps go through to the stop underneath. */
 .stop-glow {
   pointer-events: none;
-  width: 30px;
-  height: 30px;
+  width: 14px;
+  height: 14px;
 }
 .stop-glow::before,
 .stop-glow::after {
@@ -758,30 +758,30 @@ html[lang="en"] .flag-en {
   position: absolute;
   inset: 0;
   border-radius: 50%;
+  background: #00ff00;
 }
 .stop-glow::before {
-  background: rgba(62, 230, 193, 0.55);
   animation: stop-pulse 1.6s ease-out infinite;
 }
 .stop-glow::after {
-  border: 2px solid #0b7a6b;
-  box-shadow: 0 0 8px 2px rgba(62, 230, 193, 0.8);
+  border: 2px solid #000;
+  box-sizing: border-box;
 }
 @keyframes stop-pulse {
   from {
-    transform: scale(0.6);
-    opacity: 1;
+    transform: scale(1);
+    opacity: 0.9;
   }
   to {
-    transform: scale(2);
+    transform: scale(3.6);
     opacity: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {
   .stop-glow::before {
     animation: none;
-    transform: scale(1.3);
-    opacity: 0.5;
+    transform: scale(2);
+    opacity: 0.35;
   }
 }
 

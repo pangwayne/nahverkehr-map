@@ -133,6 +133,25 @@ export function upcoming(rows: DepartureRow[], nowMs: number, limit: number): De
   return rows.filter((r) => r.depMs >= nowMs - DEPARTED_GRACE_MS).slice(0, limit);
 }
 
+// The badge color: the feed's own, else grey for extra trips, slate for buses, blue for the rest.
+export const rowColor = (r: DepartureRow): string =>
+  r.color ?? (r.extra ? "#757575" : r.mode === "BUS" ? "#4a5a6a" : "#1565c0");
+
+// One row per line, in board order (both directions of a line run along the same streets).
+// Extra trips have no trip to ask for; a cancelled row is skipped, another row of that line may come.
+export function distinctLines(rows: DepartureRow[]): DepartureRow[] {
+  const seen = new Set<string>();
+  return rows.filter((r) => {
+    if (r.extra || r.cancelled) return false;
+    const key = lineKey(r);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export const lineKey = (r: DepartureRow): string => `${r.mode}|${r.line}`;
+
 // Same thresholds as the vehicle ring on the map (guidelines section 5.3).
 export function delayLevel(delaySec: number, realTime: boolean): DelayLevel {
   if (!realTime) return "unknown";

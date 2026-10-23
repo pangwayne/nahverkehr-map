@@ -9,6 +9,17 @@ const GERMAN_PREFIX = "de-DELFI_";
 // Some stations exist under two IDs with the same name (Bonn Hbf does). Merge those when this close.
 const SAME_NAME_MERGE_M = 400;
 
+// Any kind of train: S-Bahn, regional, long-distance, night. Drawn as a bigger dot on the map.
+const TRAIN_MODES = new Set<string>([
+  "SUBURBAN",
+  "REGIONAL_RAIL",
+  "REGIONAL_FAST_RAIL",
+  "RAIL",
+  "LONG_DISTANCE",
+  "HIGHSPEED_RAIL",
+  "NIGHT_RAIL",
+]);
+
 export interface Station {
   id: string; // e.g. "de:05314:61101" (Bonn Hbf)
   name: string;
@@ -16,6 +27,7 @@ export interface Station {
   lat: number;
   stopIds: string[]; // its platforms; asking for any one returns the whole station
   hasTram: boolean;
+  hasTrain: boolean;
 }
 
 export interface NearStation {
@@ -63,6 +75,7 @@ export function groupStations(places: StopPlace[]): Station[] {
       lat,
       stopIds: platforms.map((p) => p.stopId),
       hasTram: platforms.some((p) => p.modes?.some((m) => m === "TRAM" || m === "SUBWAY") ?? false),
+      hasTrain: platforms.some((p) => p.modes?.some((m) => TRAIN_MODES.has(m)) ?? false),
     };
   });
 }

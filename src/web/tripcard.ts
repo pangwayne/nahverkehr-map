@@ -24,7 +24,7 @@ const FOCUS_MAX_ZOOM = 16;
 
 const VEHICLE_SOURCE = "trip-vehicle";
 const VEHICLE_LAYER = "vehicle-dot";
-const STOPS_FIRST_LAYER = "stop-selected"; // the route line goes under the stop layers
+const STOPS_FIRST_LAYER = "stop-dot"; // the route line goes under the stop layers
 const ROUTE_SOURCE = "trip-route";
 const ROUTE_STOPS_SOURCE = "trip-stops";
 

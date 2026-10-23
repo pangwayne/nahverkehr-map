@@ -30,6 +30,8 @@ npm run deploy     # build + deploy to Cloudflare (needs `npx wrangler login` on
 - **Vehicle position:** a trip's track line is cut at its stops. If 40% of the time between two stops has
   passed (by the live or timetable times), the dot sits 40% along that piece of track. It is an estimate,
   not GPS.
+- **Lines at a stop:** while a departure board is open, the lines on it are drawn faintly on the map (one
+  `/api/trip` request per line, at most 12, remembered while the page is open). Train stations get bigger dots.
 - **Stop search:** runs in the browser on the stop list already loaded; what you type is not sent anywhere.
 - **Location:** "Mein Standort" (My location) finds the closest stops on your device and marks your position with a red dot; the position is not sent anywhere.
 

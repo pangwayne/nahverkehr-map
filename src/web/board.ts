@@ -1,4 +1,5 @@
 // Stops on the map plus the departure board: tap a stop, or press "My location".
+// While a board is open, the lines on it are drawn faintly on the map (stoplines.ts).
 // Tapping a departure opens its trip card (route and vehicle on the map).
 // The user's location stays on the phone: only stop IDs are ever sent to the Worker.
 
@@ -11,6 +12,7 @@ import {
   formatCountdown,
   mergeRows,
   modeLabel,
+  rowColor,
   shortName,
   toRows,
   upcoming,
@@ -18,6 +20,7 @@ import {
 import { type PanelUser, ageLine, el, focusKey, offsetClearOfPanel, openPanel, ownsPanel, renderPanel } from "./panel";
 import { t, onLangChange } from "./i18n";
 import { ageText, resetStatus, setStatus } from "./status";
+import { startStopLines } from "./stoplines";
 import { type Station, groupStations, matchStation, nearestStations } from "./stops";
 import type { TripRef } from "./tripcard";
 
@@ -87,8 +90,10 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
   let lastPollMs = 0;
   let hereMarker: maplibregl.Marker | null = null;
   let glowMarkers: maplibregl.Marker[] = [];
+  const stopLines = startStopLines(map);
 
   map.on("load", () => {
+    stopLines.addLayer();
     addLayers(map);
     updateSource();
   });
@@ -163,6 +168,7 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
     title = heading;
     message = null;
     results = new Map();
+    stopLines.clear();
     highlight(list.map((s) => s.station));
     render();
     void refresh();
@@ -174,6 +180,7 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
     shown = [];
     title = heading;
     message = text;
+    stopLines.clear();
     highlight([]);
     render();
   }
@@ -183,15 +190,13 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
     generation++;
     shown = [];
     message = null;
+    stopLines.clear();
     highlight([]);
     resetStatus(); // the "you are here" dot stays until the next press or a reload
   }
 
-  // Highlighted stops: a soft mint circle (map layer) plus a pulsing glow on top (a CSS animation: no map redraws).
+  // Highlighted stops: a glowing green dot on top of each (a CSS animation: no map redraws).
   function highlight(list: Station[]): void {
-    if (map.getLayer("stop-selected")) {
-      map.setFilter("stop-selected", ["in", ["get", "id"], ["literal", list.map((s) => s.id)]]);
-    }
     for (const m of glowMarkers) m.remove();
     glowMarkers = list.map((s) =>
       new maplibregl.Marker({ element: el("div", "stop-glow") }).setLngLat([s.lon, s.lat]).addTo(map),
@@ -302,6 +307,7 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
     const rows = upcoming(mergeRows(got.map((r) => r.rows)), now, limit);
     const anyError = got.some((r) => r.error !== null);
     const sameStop = nearby ? null : (shown[0]?.station.name ?? null);
+    stopLines.add(rows);
     if (rows.length) {
       const list = el("ul", "rows");
       for (const r of rows) list.append(renderRow(r, sameStop, now, onTripTap));
@@ -343,7 +349,7 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
 
 function oneOffStation(stop: StopRef): Station | null {
   if (!stop.stopId) return null;
-  return { id: stop.stopId, name: stop.name, lon: stop.lon, lat: stop.lat, stopIds: [stop.stopId], hasTram: false };
+  return { id: stop.stopId, name: stop.name, lon: stop.lon, lat: stop.lat, stopIds: [stop.stopId], hasTram: false, hasTrain: false };
 }
 
 function whenVisible(): Promise<void> {
@@ -371,7 +377,7 @@ function renderRow(
   const li = el("li", r.cancelled ? "row cancelled" : "row");
 
   const badge = el("span", "line", r.line);
-  const color = r.color ?? (r.extra ? "#757575" : r.mode === "BUS" ? "#4a5a6a" : "#1565c0");
+  const color = rowColor(r);
   badge.style.backgroundColor = color;
   badge.style.color = r.textColor ?? "#ffffff";
 
@@ -418,25 +424,13 @@ function toGeoJSON(stations: Station[]): FeatureCollection {
     features: stations.map((s) => ({
       type: "Feature",
       geometry: { type: "Point", coordinates: [s.lon, s.lat] },
-      properties: { id: s.id, name: s.name, hasTram: s.hasTram },
+      properties: { id: s.id, name: s.name, hasTram: s.hasTram, hasTrain: s.hasTrain },
     })),
   };
 }
 
 function addLayers(map: maplibregl.Map): void {
   map.addSource(SOURCE_ID, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-
-  map.addLayer({
-    id: "stop-selected",
-    type: "circle",
-    source: SOURCE_ID,
-    filter: ["in", ["get", "id"], ["literal", []]],
-    paint: {
-      "circle-radius": ["interpolate", ["linear"], ["zoom"], 12, 7, 17, 12],
-      "circle-color": "#3ee6c1", // site mint; the pulse on top is the .stop-glow marker (style.css)
-      "circle-opacity": 0.6,
-    },
-  });
 
   map.addLayer({
     id: "stop-dot",
@@ -449,11 +443,11 @@ function addLayers(map: maplibregl.Map): void {
         ["linear"],
         ["zoom"],
         13,
-        ["case", ["get", "hasTram"], 3, 2],
+        ["case", ["get", "hasTrain"], 4, ["get", "hasTram"], 3, 2],
         14,
-        ["case", ["get", "hasTram"], 3.5, 2.5],
+        ["case", ["get", "hasTrain"], 5, ["get", "hasTram"], 3.5, 2.5],
         17,
-        ["case", ["get", "hasTram"], 6, 5],
+        ["case", ["get", "hasTrain"], 10, ["get", "hasTram"], 6, 5],
       ],
       "circle-color": "#ffffff",
       "circle-stroke-color": "#37474f",
