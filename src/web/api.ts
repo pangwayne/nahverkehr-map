@@ -104,8 +104,10 @@ async function fetchJson<T>(path: string, signal?: AbortSignal): Promise<Fetched
   };
 }
 
+// The query only changes the address, so browsers do not reuse a list cached before the area grew.
+// The Worker ignores it.
 export function fetchStops(signal?: AbortSignal): Promise<Fetched<StopPlace[]>> {
-  return fetchJson<StopPlace[]>("/api/stops", signal);
+  return fetchJson<StopPlace[]>("/api/stops?area=rheinland-1", signal);
 }
 
 export function fetchDepartures(stopId: string, signal?: AbortSignal): Promise<Fetched<StopTimesResponse>> {

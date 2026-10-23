@@ -3,6 +3,7 @@
 
 import type { Board } from "./board";
 import { t, onLangChange } from "./i18n";
+import { shortName } from "./names";
 import { el } from "./panel";
 import { type Station, searchStations } from "./stops";
 
@@ -70,7 +71,7 @@ export function startSearch(board: Board): void {
     }
     list.replaceChildren(
       ...results.map((s, i) => {
-        const li = el("li", i === active ? "search-result active" : "search-result", s.name);
+        const li = el("li", i === active ? "search-result active" : "search-result", shortName(s.name));
         li.id = `search-result-${i}`;
         li.setAttribute("role", "option");
         li.setAttribute("aria-selected", String(i === active));

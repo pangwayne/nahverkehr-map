@@ -13,12 +13,12 @@ import {
   mergeRows,
   modeLabel,
   rowColor,
-  shortName,
   toRows,
   upcoming,
 } from "./departures";
 import { type PanelUser, ageLine, el, focusKey, offsetClearOfPanel, openPanel, ownsPanel, renderPanel } from "./panel";
 import { t, onLangChange } from "./i18n";
+import { setStationNames, shortName } from "./names";
 import { ageText, resetStatus, setStatus } from "./status";
 import { startStopLines } from "./stoplines";
 import { type Station, groupStations, matchStation, nearestStations } from "./stops";
@@ -131,6 +131,7 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
       try {
         const { data } = await fetchStops(AbortSignal.timeout(FETCH_TIMEOUT_MS));
         stations = groupStations(data);
+        setStationNames(stations);
         for (const s of stations) byId.set(s.id, s);
         stationsFailed = false;
         updateSource();
@@ -156,7 +157,7 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
 
   // `zoomIn`: also zoom in far enough to see the stop (used by the search, where the map may be far off).
   function showStation(station: Station, zoomIn = false): void {
-    open([{ station, distanceM: null }], () => station.name);
+    open([{ station, distanceM: null }], () => shortName(station.name));
     const zoom = zoomIn ? Math.max(map.getZoom(), SEARCH_ZOOM) : map.getZoom();
     map.easeTo({ center: [station.lon, station.lat], zoom, offset: offsetClearOfPanel() });
   }
@@ -291,7 +292,7 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
     // My location: say which stops are included, then one combined list (stop name on every row).
     const nearby = shown.length > 1 || shown[0]?.distanceM !== null;
     if (nearby) {
-      const names = shown.map((s) => `${s.station.name} ${roundM(s.distanceM ?? 0)} m`).join(" · ");
+      const names = shown.map((s) => `${shortName(s.station.name)} ${roundM(s.distanceM ?? 0)} m`).join(" · ");
       parts.push(el("p", "board-note", names));
     }
 
@@ -330,12 +331,12 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
   }
 
   return {
-    // A stop on a trip's route. Outside Bonn (or before the stop list is here) it is not one of our
+    // A stop on a trip's route. Outside the stop area (or before the stop list is here) it is not one of our
     // stations, but the Worker takes any German stop ID, so its board opens anyway.
     showStop(stop: StopRef): void {
       const station = matchStation(stations, stop) ?? oneOffStation(stop);
       if (station) showStation(station);
-      else showMessage(() => stop.name, () => t().noBoardForStop);
+      else showMessage(() => shortName(stop.name), () => t().noBoardForStop);
     },
     showStation,
     stations: () => stations,
@@ -385,10 +386,10 @@ function renderRow(
   const dest = el("span", "dest");
   dest.append(el("span", "dest-name", shortName(r.headsign)));
   const details: string[] = [];
-  const kind = modeLabel(r.mode);
+  const kind = modeLabel(r.mode, r.line);
   if (kind) details.push(kind);
   if (r.platform) details.push(r.platform);
-  if (r.stopName !== sameStop) details.push(r.stopName); // e.g. the neighbouring "Colmantstr./Hbf"
+  if (r.stopName !== sameStop) details.push(shortName(r.stopName)); // e.g. the neighbouring "Colmantstr./Hbf"
   if (r.extra) details.push(t().extraTrip);
   if (details.length) dest.append(el("small", "", details.join(" · ")));
 
@@ -424,7 +425,7 @@ function toGeoJSON(stations: Station[]): FeatureCollection {
     features: stations.map((s) => ({
       type: "Feature",
       geometry: { type: "Point", coordinates: [s.lon, s.lat] },
-      properties: { id: s.id, name: s.name, hasTram: s.hasTram, hasTrain: s.hasTrain },
+      properties: { id: s.id, name: shortName(s.name), hasTram: s.hasTram, hasTrain: s.hasTrain },
     })),
   };
 }

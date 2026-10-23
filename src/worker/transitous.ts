@@ -5,9 +5,13 @@ export const TRANSITOUS_BASE = "https://api.transitous.org";
 // Identifies us to Transitous, as their usage policy requires.
 export const USER_AGENT = "nahverkehr-map/0.1.0 (+https://nahverkehr.pangwayne.com)";
 
-// Bonn data box. Transitous wants min = lower-right, max = upper-left, both "lat,lon".
-export const BONN_MIN = "50.63,7.22";
-export const BONN_MAX = "50.78,7.02";
+// Stop area: Bonn (Bad Godesberg) up to Düsseldorf (Ratingen), Neuss to Wuppertal.
+// Transitous wants min = lower-right, max = upper-left, both "lat,lon".
+export const AREA_MIN = "50.63,7.22";
+export const AREA_MAX = "51.36,6.68";
+
+// Part of the stops cache key: change it whenever the area changes, so the old list is not served.
+export const AREA_VERSION = "rheinland-1";
 
 // All visitors asking for the same stop within the same 20 s share one upstream request.
 export const DEPARTURES_BUCKET_MS = 20_000;
@@ -45,7 +49,7 @@ export function buildTripUrl(tripId: string): string {
 }
 
 export function buildStopsUrl(): string {
-  const params = new URLSearchParams({ min: BONN_MIN, max: BONN_MAX });
+  const params = new URLSearchParams({ min: AREA_MIN, max: AREA_MAX });
   return `${TRANSITOUS_BASE}/api/v6/map/stops?${params.toString()}`;
 }
 

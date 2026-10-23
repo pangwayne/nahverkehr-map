@@ -3,6 +3,7 @@
 // Free plan rule: keep this thin (forward + cache only, no heavy parsing).
 
 import {
+  AREA_VERSION,
   DEPARTURES_BUCKET_MS,
   TRIP_BUCKET_MS,
   USER_AGENT,
@@ -76,8 +77,8 @@ async function api(url: URL, ctx: ExecutionContext): Promise<Response> {
   if (url.pathname === "/api/stops") {
     return cachedProxy(ctx, {
       upstreamUrl: buildStopsUrl(),
-      bucketKey: `${base}?fresh`,
-      latestKey: `${base}?latest`,
+      bucketKey: `${base}?area=${AREA_VERSION}&fresh`,
+      latestKey: `${base}?area=${AREA_VERSION}&latest`,
       freshS: DAY_S,
       staleS: STOPS_STALE_LIMIT_S,
       browserMaxAgeS: STOPS_BROWSER_MAX_AGE_S,

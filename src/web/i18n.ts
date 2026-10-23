@@ -6,7 +6,7 @@ export type Lang = "de" | "en";
 const STORAGE_KEY = "lang";
 
 const de = {
-  pageTitle: "Nahverkehr Bonn: Abfahrten live",
+  pageTitle: "Nahverkehr Rheinland: Abfahrten live",
   nearMe: "Mein Standort",
   nearMeLabel: "Mein Standort: Haltestellen in der Nähe zeigen",
   switchTo: "EN",
@@ -26,7 +26,7 @@ const de = {
   nearYou: "In deiner Nähe",
   needsHttps: "Der Standort braucht eine sichere Verbindung (die https://-Seite oder localhost).",
   findingYou: "Standort wird gesucht...",
-  noStopsNear: "Keine Haltestellen in der Nähe. Diese Karte deckt nur Bonn ab.",
+  noStopsNear: "Keine Haltestellen in der Nähe. Diese Karte deckt Bonn, Köln, Düsseldorf und Umgebung ab.",
   locationDenied: "Standortzugriff nicht erlaubt. Du kannst trotzdem eine Haltestelle auf der Karte antippen.",
   locationFailed: "Standort nicht gefunden. Du kannst trotzdem eine Haltestelle auf der Karte antippen.",
   youAreHere: "Du bist hier",
@@ -45,6 +45,9 @@ const de = {
   modeTram: "Straßenbahn",
   modeLightRail: "Stadtbahn",
   modeBus: "Bus",
+  modeOnDemand: "Bus auf Bestellung",
+  modeSuspension: "Schwebebahn",
+  modeFerry: "Fähre",
   modeSBahn: "S-Bahn",
   modeTrain: "Zug",
   estimatedTitle: "Geschätzte Position, kein GPS.",
@@ -80,7 +83,7 @@ const de = {
 };
 
 const en: typeof de = {
-  pageTitle: "Nahverkehr Bonn: live departures",
+  pageTitle: "Nahverkehr Rheinland: live departures",
   nearMe: "My location",
   nearMeLabel: "My location: show nearby stops",
   switchTo: "DE",
@@ -100,7 +103,7 @@ const en: typeof de = {
   nearYou: "Near you",
   needsHttps: "Location needs a secure connection (the https:// site, or localhost).",
   findingYou: "Finding your location...",
-  noStopsNear: "No stops nearby. This map covers Bonn only.",
+  noStopsNear: "No stops nearby. This map covers Bonn, Köln, Düsseldorf and the area around them.",
   locationDenied: "Location access was not allowed. You can still tap a stop on the map.",
   locationFailed: "Could not find your location. You can still tap a stop on the map.",
   youAreHere: "You are here",
@@ -119,6 +122,9 @@ const en: typeof de = {
   modeTram: "Tram",
   modeLightRail: "Light rail",
   modeBus: "Bus",
+  modeOnDemand: "On-demand bus",
+  modeSuspension: "Suspension railway",
+  modeFerry: "Ferry",
   modeSBahn: "S-Bahn",
   modeTrain: "Train",
   estimatedTitle: "Estimated position, not GPS.",

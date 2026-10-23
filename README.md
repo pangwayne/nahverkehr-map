@@ -1,10 +1,11 @@
-# Nahverkehr Bonn
+# Nahverkehr Rheinland
 
-A mobile-friendly map of Bonn's stops with live departures (trams, buses, regional trains). Search for a
+A mobile-friendly map of the stops in Bonn, Köln, Düsseldorf and the towns around them, with live
+departures (trams, Stadtbahn, buses, regional trains). Search for a
 stop or tap one on the map, then tap a departure to see its route and where the vehicle is right now.
 German by default, with an English switch. Non-commercial hobby project.
 
-Vehicle positions are **estimated** from live delay predictions, not GPS. No free feed for Bonn
+Vehicle positions are **estimated** from live delay predictions, not GPS. No free feed for this area
 provides real vehicle coordinates.
 
 Live at <https://nahverkehr.pangwayne.com>.
@@ -32,7 +33,11 @@ npm run deploy     # build + deploy to Cloudflare (needs `npx wrangler login` on
   not GPS.
 - **Lines at a stop:** while a departure board is open, the lines on it are drawn faintly on the map (one
   `/api/trip` request per line, at most 12, remembered while the page is open). Train stations get bigger dots.
+- **Stop names:** small stops show the town's car plate instead of the town ("Köln Neumarkt" becomes
+  "K-Neumarkt", "Bonn Auerberg" becomes "BN-Auerberg"); train stations keep their full name.
 - **Stop search:** runs in the browser on the stop list already loaded; what you type is not sent anywhere.
+  The town, its plate or no town at all all work ("bonn hbf", "k neumarkt", "wehrhahn").
+- **Map view:** the map opens where you left it (kept in the browser only).
 - **Location:** "Mein Standort" (My location) finds the closest stops on your device and marks your position with a red dot; the position is not sent anywhere.
 
 ## Data and attribution

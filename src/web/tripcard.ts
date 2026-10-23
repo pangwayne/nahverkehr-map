@@ -6,10 +6,11 @@ import type { FeatureCollection, Point } from "geojson";
 import type * as maplibregl from "maplibre-gl";
 import { fetchTrip } from "./api";
 import type { StopRef } from "./board";
-import { delayLevel, formatClock, formatCountdown, formatDelay, platformLabel, shortName } from "./departures";
+import { delayLevel, formatClock, formatCountdown, formatDelay, platformLabel } from "./departures";
 import type { LonLat } from "./geo";
 import { type PanelUser, ageLine, el, focusKey, offsetClearOfPanel, openPanel, ownsPanel, renderPanel } from "./panel";
 import { t, onLangChange } from "./i18n";
+import { shortName } from "./names";
 import { ageText, resetStatus, setStatus } from "./status";
 import { type RouteStop, type TripProgress, type TripRoute, leaveMs, progressAt, reachMs, tripRoute } from "./trip";
 import { type PreparedTrip, type VehiclePosition, prepareRoute, vehicleAt } from "./vehicles";
@@ -178,7 +179,7 @@ export function startTripCard(map: maplibregl.Map, onStopTap: (stop: StopRef) =>
 
   function render(now: number, progress: TripProgress | null): void {
     if (!tapped) return;
-    const statusTitle = route ? `${route.line} → ${route.headsign}` : t().line(tapped.line);
+    const statusTitle = route ? `${route.line} → ${shortName(route.headsign)}` : t().line(tapped.line);
     const age = ageS(now);
     setStatus(statusTitle, Number.isFinite(age) ? age : null, error !== null);
     // Panel title: the line badge, then where it goes.
@@ -205,7 +206,7 @@ export function startTripCard(map: maplibregl.Map, onStopTap: (stop: StopRef) =>
     }
 
     if (route.implausibleFrom !== null && !route.cancelled) {
-      const from = route.stops[route.implausibleFrom]!.name;
+      const from = shortName(route.stops[route.implausibleFrom]!.name);
       parts.push(el("p", "board-note board-warn", t().implausible(from)));
     }
 
@@ -411,7 +412,7 @@ function setRouteData(
       ? route.stops.map((s, i) => ({
           type: "Feature",
           geometry: { type: "Point", coordinates: [s.lon, s.lat] },
-          properties: { stopId: s.stopId ?? "", name: s.name, color, passed: passed(i), next: progress?.next === i },
+          properties: { stopId: s.stopId ?? "", name: s.name, label: shortName(s.name), color, passed: passed(i), next: progress?.next === i },
         }))
       : [],
   };
@@ -471,7 +472,7 @@ function addLayers(map: maplibregl.Map): void {
     source: ROUTE_STOPS_SOURCE,
     minzoom: 13,
     layout: {
-      "text-field": ["get", "name"],
+      "text-field": ["get", "label"],
       "text-font": ["Noto Sans Regular"],
       "text-size": 11,
       "text-anchor": "left",

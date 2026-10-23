@@ -3,6 +3,7 @@
 
 import type { StopPlace } from "./api";
 import { type LonLat, distanceM } from "./geo";
+import { plateName, townName } from "./names";
 
 const GERMAN_PREFIX = "de-DELFI_";
 
@@ -56,14 +57,22 @@ export function groupStations(places: StopPlace[]): Station[] {
     else groups.set(key, [p]);
   }
 
+  // Looked up by name: comparing every station with every other is too slow for ~7,000 stations on a phone.
   const merged: { id: string; platforms: StopPlace[] }[] = [];
+  const byName = new Map<string, { id: string; platforms: StopPlace[] }[]>();
   for (const [id, platforms] of groups) {
     const center = average(platforms);
-    const twin = merged.find(
-      (m) => m.platforms[0]!.name === platforms[0]!.name && distanceM(average(m.platforms), center) <= SAME_NAME_MERGE_M,
-    );
-    if (twin) twin.platforms.push(...platforms);
-    else merged.push({ id, platforms: [...platforms] });
+    const name = platforms[0]!.name;
+    const sameName = byName.get(name) ?? [];
+    const twin = sameName.find((m) => distanceM(average(m.platforms), center) <= SAME_NAME_MERGE_M);
+    if (twin) {
+      twin.platforms.push(...platforms);
+      continue;
+    }
+    const entry = { id, platforms: [...platforms] };
+    merged.push(entry);
+    sameName.push(entry);
+    byName.set(name, sameName);
   }
 
   return merged.map(({ id, platforms }) => {
@@ -157,18 +166,31 @@ function variants(typed: string): string[] {
   return out;
 }
 
-// Stations whose name contains every typed word, best first: a name word starting with the first
-// typed word beats one containing it; then shorter names. "Bonn" alone matches everything, so it only
-// counts when other words are typed too.
+// What a station can be found by: its name, with the plate ("K Neumarkt") and with the town spelled
+// out ("Düsseldorf Wehrhahn" for "D-Wehrhahn S"). Worked out once per station, not on every key press.
+const searchIndex = new WeakMap<Station, { text: string; words: string[] }>();
+
+function searchable(station: Station): { text: string; words: string[] } {
+  let entry = searchIndex.get(station);
+  if (!entry) {
+    const forms = new Set([station.name, plateName(station.name), townName(station.name)]);
+    const text = [...forms].map(searchText).join(" ");
+    entry = { text, words: words(text) };
+    searchIndex.set(station, entry);
+  }
+  return entry;
+}
+
+// Stations whose name contains every typed word, best first: a whole name word beats a name word
+// starting with the typed word, which beats one containing it; then shorter names. The town counts like any other word,
+// so "bonn hbf" finds Bonn Hbf and not Köln Hbf.
 export function searchStations(stations: Station[], query: string, limit: number): Station[] {
-  let typed = words(searchText(query));
-  if (typed.length > 1) typed = typed.filter((w) => w !== "bonn");
+  const typed = words(searchText(query));
   if (typed.length === 0) return [];
 
   const hits: { station: Station; rank: number }[] = [];
   for (const station of stations) {
-    const name = searchText(station.name);
-    const nameWords = words(name);
+    const { text: name, words: nameWords } = searchable(station);
     let rank = 0;
     let ok = true;
     for (const [i, w] of typed.entries()) {
@@ -179,6 +201,7 @@ export function searchStations(stations: Station[], query: string, limit: number
         break;
       }
       if (!atStart) rank += i === 0 ? 2 : 1;
+      else if (!forms.some((f) => nameWords.includes(f))) rank += 0.5; // "k" is the whole plate in K-Neumarkt, only the start of Kuhweg
     }
     if (ok) hits.push({ station, rank });
   }

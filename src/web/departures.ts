@@ -38,7 +38,7 @@ const HIDDEN_MODES = new Set<Mode>(["HIGHSPEED_RAIL", "LONG_DISTANCE", "NIGHT_RA
 
 const RAIL_MODES = new Set<Mode>(["REGIONAL_RAIL", "REGIONAL_FAST_RAIL", "SUBURBAN", "RAIL"]);
 
-// Trams (Bonn's Stadtbahn comes as SUBWAY) and buses are hardly ever more than a few minutes early.
+// Trams, Stadtbahn and buses are hardly ever more than a few minutes early.
 // Much earlier than that is broken live data (seen: a steady "-9", a "-16"). Trains are not checked.
 const EARLY_CHECK_MODES = new Set<Mode>(["TRAM", "SUBWAY", "BUS"]);
 export const TOO_EARLY_SEC = 5 * 60;
@@ -189,21 +189,21 @@ export function formatCountdown(depMs: number, nowMs: number): string {
   return berlinClock.format(depMs);
 }
 
+// Bonn's and Köln's Stadtbahn lines come as TRAM, like real trams (Bonn 61/62/65, Düsseldorf 701-709).
+// Düsseldorf's U70-U79 come as SUBWAY.
+const STADTBAHN_LINES = new Set(["1", "3", "4", "5", "7", "9", "12", "13", "15", "16", "17", "18", "63", "66", "67", "68"]);
+
 // What kind of vehicle, in words ("Stadtbahn", "Zug"); null when it is nothing we name.
-export function modeLabel(mode: Mode): string | null {
-  if (mode === "TRAM") return t().modeTram;
-  if (mode === "SUBWAY") return t().modeLightRail; // Bonn's Stadtbahn
+export function modeLabel(mode: Mode, line: string): string | null {
+  if (mode === "TRAM") return STADTBAHN_LINES.has(line) ? t().modeLightRail : t().modeTram;
+  if (mode === "SUBWAY") return t().modeLightRail;
   if (mode === "BUS") return t().modeBus;
+  if (mode === "ODM") return t().modeOnDemand;
+  if (mode === "FUNICULAR") return t().modeSuspension; // the only one around: Wuppertal's Schwebebahn
+  if (mode === "FERRY") return t().modeFerry;
   if (mode === "SUBURBAN") return t().modeSBahn;
   if (RAIL_MODES.has(mode)) return t().modeTrain;
   return null;
-}
-
-// "Bonn Hbf" stays, "Bonn Auerberg Kopenhagener Str." becomes "Auerberg Kopenhagener Str.":
-// on a Bonn map the city adds nothing. Other towns keep their name.
-export function shortName(name: string): string {
-  const rest = name.startsWith("Bonn ") ? name.slice(5).trim() : "";
-  return rest.length > 3 ? rest : name;
 }
 
 // The small line under the countdown: "+3 live", "pünktlich", "nur Fahrplan" or "fällt aus".
