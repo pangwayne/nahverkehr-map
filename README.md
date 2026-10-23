@@ -28,7 +28,7 @@ npm run deploy     # build + deploy to Cloudflare (needs `npx wrangler login` on
 - **Vehicle position:** a trip's track line is cut at its stops. If 40% of the time between two stops has
   passed (by the live or timetable times), the dot sits 40% along that piece of track. It is an estimate,
   not GPS.
-- **Location:** "Near me" finds the closest stops on your device; the position is not sent anywhere.
+- **Location:** "In der Nähe" (Near me) finds the closest stops on your device; the position is not sent anywhere.
 
 ## Data and attribution
 

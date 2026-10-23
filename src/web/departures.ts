@@ -1,7 +1,8 @@
 // Turns Transitous stoptimes into departure-board rows, plus the text shown for each row.
-// Pure functions only (no DOM, no fetch), so everything here is unit tested.
+// Pure functions only (no DOM, no fetch), so everything here is unit tested. Texts come from i18n.ts.
 
 import type { Mode, StopTime } from "./api";
+import { t } from "./i18n";
 
 // Keep a departure on the board this long after it left (times have minute resolution).
 export const DEPARTED_GRACE_MS = 30_000;
@@ -159,12 +160,12 @@ export function formatClock(ms: number): string {
   return berlinClock.format(ms);
 }
 
-// "now", "in 7 min", or a Berlin clock time for anything an hour or more away.
+// "jetzt" / "now", "in 7 min", or a Berlin clock time for anything an hour or more away.
 // Rounds down: better to arrive a little early than to miss it.
 export function formatCountdown(depMs: number, nowMs: number): string {
   const diff = depMs - nowMs;
-  if (diff < 60_000) return "now";
+  if (diff < 60_000) return t().now;
   const min = Math.floor(diff / 60_000);
-  if (min < 60) return `in ${min} min`;
+  if (min < 60) return t().inMin(min);
   return berlinClock.format(depMs);
 }

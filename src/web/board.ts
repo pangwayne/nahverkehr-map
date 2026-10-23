@@ -15,7 +15,8 @@ import {
   upcoming,
 } from "./departures";
 import { type PanelUser, el, offsetClearOfPanel, openPanel, ownsPanel, renderPanel } from "./panel";
-import { resetStatus, setStatus } from "./status";
+import { t, onLangChange } from "./i18n";
+import { ageText, resetStatus, setStatus } from "./status";
 import { type Station, groupStations, matchStation, nearestStations } from "./stops";
 import type { TripRef } from "./tripcard";
 
@@ -68,8 +69,9 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
   const byId = new Map<string, Station>();
   const stationsReady = loadStations();
 
-  let title = "";
-  let message: string | null = null;
+  // Functions, so a language switch redraws them in the new language.
+  let title = () => "";
+  let message: (() => string) | null = null;
   let shown: Shown[] = [];
   let results = new Map<string, Result>();
   let generation = 0; // bumps whenever the board changes, so late answers are ignored
@@ -92,6 +94,10 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
   map.on("mouseleave", "stop-hit", () => (map.getCanvas().style.cursor = ""));
 
   nearBtn.addEventListener("click", nearMe);
+  onLangChange(() => {
+    if (hereMarker) hereMarker.getElement().title = t().youAreHere;
+    if (ownsPanel(user) && (shown.length || message)) render();
+  });
 
   // One timer: tick the countdowns, and fetch again once the poll interval has passed.
   setInterval(() => {
@@ -124,11 +130,11 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
   }
 
   function showStation(station: Station): void {
-    open([{ station, distanceM: null }], station.name);
+    open([{ station, distanceM: null }], () => station.name);
     map.easeTo({ center: [station.lon, station.lat], offset: offsetClearOfPanel() });
   }
 
-  function open(list: Shown[], heading: string): void {
+  function open(list: Shown[], heading: () => string): void {
     openPanel(user);
     generation++;
     shown = list;
@@ -140,7 +146,7 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
     void refresh();
   }
 
-  function showMessage(heading: string, text: string): void {
+  function showMessage(heading: () => string, text: () => string): void {
     openPanel(user);
     generation++;
     shown = [];
@@ -196,10 +202,10 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
 
   function nearMe(): void {
     if (!window.isSecureContext || !("geolocation" in navigator)) {
-      showMessage("Near you", "Location needs a secure connection (the https:// site, or localhost).");
+      showMessage(nearYou, () => t().needsHttps);
       return;
     }
-    showMessage("Near you", "Finding your location...");
+    showMessage(nearYou, () => t().findingYou);
     const gen = generation;
 
     navigator.geolocation.getCurrentPosition(
@@ -210,19 +216,16 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
         let near = nearestStations(stations, lon, lat, NEAR_RADIUS_M, NEAR_LIMIT);
         if (near.length === 0) near = nearestStations(stations, lon, lat, NEAR_FALLBACK_M, 1);
         if (near.length === 0) {
-          showMessage("Near you", "No stops nearby. This map covers Bonn only.");
+          showMessage(nearYou, () => t().noStopsNear);
           return;
         }
         showHere(lon, lat);
-        open(near, "Near you");
+        open(near, nearYou);
       },
       (err) => {
         if (gen !== generation) return;
-        const text =
-          err.code === err.PERMISSION_DENIED
-            ? "Location access was not allowed. You can still tap a stop on the map."
-            : "Could not find your location. You can still tap a stop on the map.";
-        showMessage("Near you", text);
+        const denied = err.code === err.PERMISSION_DENIED;
+        showMessage(nearYou, () => (denied ? t().locationDenied : t().locationFailed));
       },
       { enableHighAccuracy: true, timeout: 15_000, maximumAge: 30_000 },
     );
@@ -231,7 +234,7 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
   function showHere(lon: number, lat: number): void {
     if (!hereMarker) {
       const dot = el("div", "here");
-      dot.title = "You are here";
+      dot.title = t().youAreHere;
       hereMarker = new maplibregl.Marker({ element: dot });
     }
     hereMarker.setLngLat([lon, lat]).addTo(map);
@@ -239,9 +242,10 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
   }
 
   function render(): void {
+    const heading = title();
     if (message !== null) {
-      setStatus(title, null, false);
-      renderPanel(user, title, [el("p", "board-note", message)]);
+      setStatus(heading, null, false);
+      renderPanel(user, heading, [el("p", "board-note", message())]);
       return;
     }
 
@@ -257,9 +261,9 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
 
     const got = shown.map((s) => results.get(s.station.id)).filter((r): r is Result => r !== undefined);
     if (got.length === 0) {
-      setStatus(title, null, false);
-      parts.push(el("p", "board-note", "Loading departures..."));
-      renderPanel(user, title, parts);
+      setStatus(heading, null, false);
+      parts.push(el("p", "board-note", t().loadingDepartures));
+      renderPanel(user, heading, parts);
       return;
     }
 
@@ -272,21 +276,20 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
       for (const r of rows) list.append(renderRow(r, sameStop, now, onTripTap));
       parts.push(list);
     } else if (!anyError) {
-      parts.push(el("p", "board-note", "No departures soon."));
+      parts.push(el("p", "board-note", t().noDepartures));
     }
 
     // Data age, like the vehicle status line (the oldest answer counts). Never show old data as current.
     const times = got.map((r) => r.fetchedAtMs).filter((t): t is number => t !== null);
     const ageS = times.length ? Math.max(0, (now - Math.min(...times)) / 1000) : null;
-    setStatus(title, ageS, anyError);
+    setStatus(heading, ageS, anyError);
     if (anyError && (ageS === null || ageS > STALE_AFTER_S)) {
-      parts.push(el("p", "board-note board-error", "Departures unavailable right now. Retrying..."));
+      parts.push(el("p", "board-note board-error", t().departuresUnavailable));
     } else if (ageS !== null) {
       const old = ageS > STALE_AFTER_S;
-      const text = `updated ${Math.round(ageS)} s ago${old ? " · data is old" : ""}`;
-      parts.push(el("p", old ? "board-note board-error" : "board-note", text));
+      parts.push(el("p", old ? "board-note board-error" : "board-note", ageText(ageS, old)));
     }
-    renderPanel(user, title, parts);
+    renderPanel(user, heading, parts);
   }
 
   return {
@@ -299,6 +302,7 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
 }
 
 const roundM = (m: number) => Math.round(m / 10) * 10;
+const nearYou = () => t().nearYou;
 
 // `sameStop`: the tapped station's name, left out of the row details; null shows it on every row.
 function renderRow(
@@ -318,13 +322,13 @@ function renderRow(
   const details: string[] = [];
   if (r.stopName !== sameStop) details.push(r.stopName); // e.g. the neighbouring "Colmantstr./Hbf"
   if (r.platform) details.push(r.platform);
-  if (r.extra) details.push("extra trip, no details");
-  if (!r.realTime && !r.cancelled) details.push("timetable only");
+  if (r.extra) details.push(t().extraTrip);
+  if (!r.realTime && !r.cancelled) details.push(t().timetableOnly);
   if (details.length) dest.append(el("small", "", details.join(" · ")));
 
   const when = el("span", "when");
   if (r.cancelled) {
-    when.append(el("b", "", "cancelled"));
+    when.append(el("b", "", t().cancelled));
   } else {
     when.append(el("b", "", formatCountdown(r.depMs, nowMs)));
     const delay = formatDelay(r.delaySec);

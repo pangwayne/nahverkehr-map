@@ -1,6 +1,43 @@
+/* Colours and font from www.pangwayne.com: dark header and footer with the mint accent,
+   the panel in the site's light palette (or its dark one when the device is in dark mode). */
 :root {
   color-scheme: light dark;
-  font-family: system-ui, sans-serif;
+  --font-sans: "Hanken Grotesk Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+
+  --head-bg: #0b0e18;
+  --head-ink: #f1f3f7;
+  --head-soft: #b8bfcc;
+  --head-border: #ffffff14;
+  --mint: #3ee6c1;
+  --mint-dark: #2fd0ad;
+  --on-mint: #11131a;
+
+  --surface: #ffffff;
+  --ink: #11131a;
+  --ink-soft: #474e5c;
+  --accent: #0b7a6b;
+  --border: #11131a17;
+  --hover: #0b7a6b14;
+  --ok: #2e7d32;
+  --late: #b45309;
+  --verylate: #c62828;
+
+  font-family: var(--font-sans);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #141826;
+    --ink: #f1f3f7;
+    --ink-soft: #b8bfcc;
+    --accent: #3ee6c1;
+    --border: #ffffff14;
+    --hover: #3ee6c114;
+    --ok: #6fdc8c;
+    --late: #f5a524;
+    --verylate: #f2978f;
+  }
 }
 
 html,
@@ -12,37 +49,186 @@ body {
 body {
   display: flex;
   flex-direction: column;
+  background: var(--head-bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
 }
 
-header {
-  padding: 8px 16px;
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.site-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 14px;
+  padding: 10px 16px;
+  background: var(--head-bg);
+  color: var(--head-ink);
+  border-bottom: 1px solid var(--head-border);
+}
+
+.site-header :focus-visible {
+  outline-color: var(--mint);
+}
+
+.logo {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--head-ink);
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.logo-photo {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 0 0 2px rgba(62, 230, 193, 0.55);
+}
+
+.divider {
+  flex: none;
+  width: 1px;
+  height: 28px;
+  background: #ffffff24;
+}
+
+.app-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-title h1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.pill {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--mint);
+  color: var(--on-mint);
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+#status {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--head-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav-right {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 #near-me {
-  flex: none;
-  padding: 8px 14px;
-  border: 1px solid #1565c0;
-  border-radius: 18px;
-  background: #1565c0;
-  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--mint);
+  color: var(--on-mint);
   font: inherit;
-  font-size: 0.9rem;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
+  transition: background 0.2s;
 }
 
-header h1 {
-  margin: 0;
-  font-size: 1.2rem;
+#near-me:hover {
+  background: var(--mint-dark);
 }
 
-header p {
-  margin: 4px 0 0;
-  font-size: 0.85rem;
-  opacity: 0.7;
+/* Same pill as the language switch on www.pangwayne.com: the flag and code of the other language. */
+.lang-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 44px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--head-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--head-soft);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.lang-toggle:hover {
+  border-color: var(--head-soft);
+  color: var(--head-ink);
+}
+
+.lang-flag {
+  display: block;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px #fff3;
+}
+
+html[lang="de"] .flag-de,
+html[lang="en"] .flag-en {
+  display: none;
+}
+
+/* Phones: portrait only, and the location button as an icon (its label stays for screen readers). */
+@media (max-width: 640px) {
+  .site-header {
+    gap: 10px;
+    padding: 8px 12px;
+  }
+
+  .logo-name,
+  .divider {
+    display: none;
+  }
+
+  .app-title h1 {
+    font-size: 17px;
+  }
+
+  #status {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .near-text {
+    display: none;
+  }
+
+  #near-me {
+    width: 40px;
+    padding: 0;
+    justify-content: center;
+  }
 }
 
 #map-wrap {
@@ -64,9 +250,9 @@ header p {
   max-height: 50%;
   overflow-y: auto;
   z-index: 3; /* above MapLibre's controls and credits (z-index 2) */
-  background: Canvas;
-  color: CanvasText;
-  border-radius: 12px 12px 0 0;
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 16px 16px 0 0;
   box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.25);
   padding: 0 16px 8px;
 }
@@ -82,7 +268,7 @@ header p {
     bottom: 36px;
     width: 400px;
     max-height: 70%;
-    border-radius: 12px;
+    border-radius: 16px;
   }
 }
 
@@ -92,13 +278,15 @@ header p {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 0 6px;
-  background: Canvas;
+  padding: 12px 0 6px;
+  background: var(--surface);
 }
 
 .board-head h2 {
   margin: 0;
-  font-size: 1.05rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 #board-close {
@@ -123,7 +311,7 @@ header p {
   align-items: center;
   gap: 8px;
   padding: 6px 0;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+  border-bottom: 1px solid var(--border);
 }
 
 /* A departure you can tap: opens its trip card with route and vehicle. */
@@ -136,7 +324,7 @@ header p {
 
 .row.tappable:hover,
 .row.tappable:focus-visible {
-  background: rgba(128, 128, 128, 0.15);
+  background: var(--hover);
   outline: none;
 }
 
@@ -171,11 +359,11 @@ header p {
 }
 
 .delay.late {
-  color: #f57c00;
+  color: var(--late);
 }
 
 .delay.verylate {
-  color: #c62828;
+  color: var(--verylate);
 }
 
 .row.cancelled .dest,
@@ -185,7 +373,7 @@ header p {
 }
 
 .row.cancelled .when {
-  color: #c62828;
+  color: var(--verylate);
 }
 
 .board-note {
@@ -195,12 +383,12 @@ header p {
 }
 
 .board-warn {
-  color: #e65100;
+  color: var(--late);
   opacity: 1;
 }
 
 .board-error {
-  color: #c62828;
+  color: var(--verylate);
   opacity: 1;
   font-weight: 600;
 }
@@ -228,11 +416,11 @@ header p {
 }
 
 .cancelled-text {
-  color: #c62828;
+  color: var(--verylate);
 }
 
 .delay.ontime {
-  color: #2e7d32;
+  color: var(--ok);
 }
 
 .trip-actions {
@@ -247,7 +435,7 @@ header p {
   background: none;
   padding: 0;
   margin: 0;
-  color: #1e88e5;
+  color: var(--accent);
   font: inherit;
   font-size: 0.85rem;
   text-decoration: underline;
@@ -266,7 +454,7 @@ header p {
   gap: 8px;
   padding: 4px 0;
   font-size: 0.9rem;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+  border-bottom: 1px solid var(--border);
 }
 
 .trip-stop .time {
@@ -300,7 +488,7 @@ header p {
 }
 
 .trip-stop.cancelled .delay {
-  color: #c62828;
+  color: var(--verylate);
 }
 
 /* "You are here" for Near me. */
@@ -314,19 +502,24 @@ header p {
 }
 
 /* Always-visible attribution (Transitous asks for a visible link, the map's own credits can collapse). */
-footer {
-  padding: 4px 16px;
-  font-size: 0.75rem;
-  opacity: 0.7;
+.site-footer {
+  padding: 6px 16px;
+  background: var(--head-bg);
+  color: var(--head-soft);
+  border-top: 1px solid var(--head-border);
+  font-size: 12px;
 }
 
-footer a {
+.site-footer a {
   color: inherit;
+}
+
+.site-footer a:hover {
+  color: var(--mint);
 }
 
 #status[data-freshness="stale"],
 #status[data-freshness="unavailable"] {
-  color: #c62828;
-  opacity: 1;
+  color: #f2978f;
   font-weight: 600;
 }

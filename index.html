@@ -1,36 +1,69 @@
 <!doctype html>
-<html lang="en">
+<html lang="de">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ÖPNV Bonn live</title>
+    <meta name="theme-color" content="#0b0e18" />
+    <title>Nahverkehr Bonn: Abfahrten live</title>
     <link rel="stylesheet" href="/src/web/style.css" />
   </head>
   <body>
-    <header>
-      <div>
-        <h1>ÖPNV Bonn live</h1>
-        <p id="status">Checking connection...</p>
+    <!-- Texts with data-t / data-t-label / data-href are filled in by src/web/main.ts from src/web/i18n.ts (German is the default). -->
+    <header class="site-header">
+      <a class="logo" href="https://www.pangwayne.com" data-t-label="portraitLabel" aria-label="Pang Wayne Wee, zur Website">
+        <img class="logo-photo" src="https://www.pangwayne.com/images/wayne-portrait-square.jpg" alt="" width="34" height="34" />
+        <span class="logo-name">Pang Wayne Wee</span>
+      </a>
+      <span class="divider" aria-hidden="true"></span>
+      <div class="app-title">
+        <h1>Nahverkehr <span class="pill">Bonn</span></h1>
+        <p id="status">…</p>
       </div>
-      <button id="near-me" type="button">Near me</button>
+      <div class="nav-right">
+        <button id="near-me" type="button" data-t-label="nearMeLabel" aria-label="Haltestellen in meiner Nähe">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+            <circle cx="12" cy="12" r="6" />
+            <circle cx="12" cy="12" r="2" />
+          </svg>
+          <span class="near-text" data-t="nearMe">In der Nähe</span>
+        </button>
+        <button id="lang" type="button" class="lang-toggle" data-t-label="switchLabel" aria-label="Read in English">
+          <svg class="lang-flag flag-en" viewBox="0 0 60 36" width="20" height="12" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <clipPath id="uk-flag-t"><path d="M30,18 h30 v18 z v18 h-30 z h-30 v-18 z v-18 h30 z" /></clipPath>
+            <rect width="60" height="36" fill="#012169" />
+            <path d="M0,0 L60,36 M60,0 L0,36" stroke="#fff" stroke-width="7" />
+            <path d="M0,0 L60,36 M60,0 L0,36" clip-path="url(#uk-flag-t)" stroke="#C8102E" stroke-width="4" />
+            <path d="M30,0 v36 M0,18 h60" stroke="#fff" stroke-width="12" />
+            <path d="M30,0 v36 M0,18 h60" stroke="#C8102E" stroke-width="7" />
+          </svg>
+          <svg class="lang-flag flag-de" viewBox="0 0 5 3" width="20" height="12" aria-hidden="true">
+            <rect width="5" height="1" fill="#000" />
+            <rect y="1" width="5" height="1" fill="#D00" />
+            <rect y="2" width="5" height="1" fill="#FFCE00" />
+          </svg>
+          <span data-t="switchTo">EN</span>
+        </button>
+      </div>
     </header>
     <div id="map-wrap">
       <main id="map"></main>
       <section id="board" hidden aria-live="polite">
         <div class="board-head">
           <h2 id="board-title"></h2>
-          <button id="board-close" type="button" aria-label="Close">×</button>
+          <button id="board-close" type="button" data-t-label="close" aria-label="Schließen">×</button>
         </div>
         <div id="board-body"></div>
       </section>
     </div>
-    <footer>
-      Data: <a href="https://transitous.org/sources/" target="_blank" rel="noopener">Transitous sources</a>
+    <footer class="site-footer">
+      <span data-t="footerData">Daten</span>:
+      <a href="https://transitous.org/sources/" target="_blank" rel="noopener" data-t="footerSources">Transitous-Quellen</a>
       · © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>
       · <a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a>
-      · <a href="https://github.com/pangwayne/nahverkehr-map" target="_blank" rel="noopener">Source code</a>
-      · <a href="https://www.pangwayne.com/imprint" target="_blank" rel="noopener">Imprint</a>
-      · <a href="/privacy" target="_blank" rel="noopener">Privacy</a>
+      · <a href="https://github.com/pangwayne/nahverkehr-map" target="_blank" rel="noopener" data-t="footerSource">Quellcode</a>
+      · <a href="https://www.pangwayne.com/de/impressum" target="_blank" rel="noopener" data-t="footerImprint" data-href="imprintUrl">Impressum</a>
+      · <a href="/de/datenschutzerklaerung" target="_blank" rel="noopener" data-t="footerPrivacy" data-href="privacyUrl">Datenschutz</a>
     </footer>
     <script type="module" src="/src/web/main.ts"></script>
   </body>

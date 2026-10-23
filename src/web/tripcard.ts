@@ -9,7 +9,8 @@ import type { StopRef } from "./board";
 import { delayLevel, formatClock, formatCountdown, formatDelay, platformLabel } from "./departures";
 import type { LonLat } from "./geo";
 import { type PanelUser, el, offsetClearOfPanel, openPanel, ownsPanel, renderPanel } from "./panel";
-import { resetStatus, setStatus } from "./status";
+import { t, onLangChange } from "./i18n";
+import { ageText, resetStatus, setStatus } from "./status";
 import { type RouteStop, type TripProgress, type TripRoute, leaveMs, progressAt, reachMs, tripRoute } from "./trip";
 import { type PreparedTrip, type VehiclePosition, prepareRoute, vehicleAt } from "./vehicles";
 
@@ -87,11 +88,14 @@ export function startTripCard(map: maplibregl.Map, onStopTap: (stop: StopRef) =>
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && tapped && Date.now() - lastPollMs >= POLL_MS) void refresh();
   });
+  onLangChange(() => {
+    if (tapped && ownsPanel(user)) update();
+  });
 
-  function open(t: TripRef): void {
+  function open(ref: TripRef): void {
     openPanel(user);
     generation++;
-    tapped = t;
+    tapped = ref;
     route = null;
     prepared = null;
     progress = null;
@@ -174,14 +178,14 @@ export function startTripCard(map: maplibregl.Map, onStopTap: (stop: StopRef) =>
 
   function render(now: number, progress: TripProgress | null): void {
     if (!tapped) return;
-    const title = route ? `${route.line} → ${route.headsign}` : `Line ${tapped.line}`;
+    const title = route ? `${route.line} → ${route.headsign}` : t().line(tapped.line);
     const age = ageS(now);
     setStatus(title, Number.isFinite(age) ? age : null, error !== null);
     const parts: HTMLElement[] = [];
 
     if (!route || !progress) {
       parts.push(
-        el("p", error ? "board-note board-error" : "board-note", error ? "Trip details unavailable right now. Retrying..." : "Loading trip..."),
+        el("p", error ? "board-note board-error" : "board-note", error ? t().tripUnavailable : t().loadingTrip),
       );
       renderPanel(user, title, parts);
       return;
@@ -191,27 +195,26 @@ export function startTripCard(map: maplibregl.Map, onStopTap: (stop: StopRef) =>
 
     if (route.implausibleFrom !== null && !route.cancelled) {
       const from = route.stops[route.implausibleFrom]!.name;
-      parts.push(el("p", "board-note board-warn", `Live times look wrong, showing timetable from ${from}`));
+      parts.push(el("p", "board-note board-warn", t().implausible(from)));
     }
 
     // Data age, like everywhere else. Never show old data as current.
     if (error && age > STALE_AFTER_S) {
-      parts.push(el("p", "board-note board-error", "Trip details unavailable right now. Retrying..."));
+      parts.push(el("p", "board-note board-error", t().tripUnavailable));
     } else if (Number.isFinite(age)) {
       const old = age > STALE_AFTER_S;
-      const text = `updated ${Math.round(age)} s ago${old ? " · data is old" : ""}`;
-      parts.push(el("p", old ? "board-note board-error" : "board-note", text));
+      parts.push(el("p", old ? "board-note board-error" : "board-note", ageText(age, old)));
     }
 
     // Passed stops are folded away (all but the last one), so the summary stays at the top.
     const firstShown = showEarlier || progress.next === null ? 0 : Math.max(0, progress.next - 1);
     const actions = el("div", "trip-actions");
-    const zoomBtn = el("button", "link-button", "Show whole route");
+    const zoomBtn = el("button", "link-button", t().wholeRoute);
     const shownRoute = route;
     zoomBtn.addEventListener("click", () => fitRoute(map, shownRoute));
     actions.append(zoomBtn);
     if (firstShown > 0) {
-      const earlierBtn = el("button", "link-button", `Show ${firstShown} earlier stops`);
+      const earlierBtn = el("button", "link-button", t().earlierStops(firstShown));
       earlierBtn.addEventListener("click", () => {
         showEarlier = true;
         update();
@@ -245,14 +248,14 @@ function renderSummary(route: TripRoute, p: TripProgress, now: number): HTMLElem
 
   const status = el("span", "trip-status");
   if (route.cancelled) {
-    status.append(el("b", "cancelled-text", "This trip is cancelled"));
+    status.append(el("b", "cancelled-text", t().tripCancelled));
   } else if (!route.realTime) {
-    status.append(el("span", "", "Timetable only, no live data"));
+    status.append(el("span", "", t().noLiveData));
   } else if (onTimetable(route, p.next ?? route.stops.length - 1)) {
-    status.append(el("span", "", "Timetable only"));
+    status.append(el("span", "", t().timetableOnlyCap));
   } else {
     const min = Math.round(p.delaySec / 60);
-    const text = min === 0 ? "On time" : min > 0 ? `${min} min late` : `${-min} min early`;
+    const text = min === 0 ? t().onTime : min > 0 ? t().minLate(min) : t().minEarly(-min);
     status.append(el("b", `delay ${delayLevel(p.delaySec, true)}`, text));
   }
   box.append(badge, status);
@@ -266,14 +269,14 @@ function renderSummary(route: TripRoute, p: TripProgress, now: number): HTMLElem
 function nextText(route: TripRoute, p: TripProgress, now: number): string {
   if (p.next === null) {
     const last = route.stops[route.stops.length - 1];
-    return last ? `Trip ended at ${last.name}` : "Trip ended";
+    return last ? t().tripEndedAt(last.name) : t().tripEnded;
   }
   const s = route.stops[p.next]!;
   const label = platformLabel(s.stopId, route.mode);
   const platform = label ? ` (${label})` : "";
-  if (p.state === "before") return `Starts at ${s.name}${platform} · ${formatCountdown(leaveMs(s)!, now)}`;
-  if (p.state === "atStop") return `At ${s.name}${platform} now · leaves ${formatCountdown(leaveMs(s)!, now)}`;
-  return `Next stop: ${s.name}${platform} · ${formatCountdown(reachMs(s)!, now)}`;
+  if (p.state === "before") return t().startsAt(`${s.name}${platform}`, formatCountdown(leaveMs(s)!, now));
+  if (p.state === "atStop") return t().atStopNow(`${s.name}${platform}`, formatCountdown(leaveMs(s)!, now));
+  return t().nextStop(`${s.name}${platform}`, formatCountdown(reachMs(s)!, now));
 }
 
 function renderStop(s: RouteStop, i: number, p: TripProgress, route: TripRoute): HTMLElement {
@@ -282,9 +285,9 @@ function renderStop(s: RouteStop, i: number, p: TripProgress, route: TripRoute):
   const li = el("li", classes.filter(Boolean).join(" "));
 
   // The time that matters for a passenger: departure, or arrival at the last stop.
-  const t = leaveMs(s);
+  const leave = leaveMs(s);
   const sched = s.schedDepMs ?? s.schedArrMs;
-  li.append(el("span", "time", t === null ? "" : formatClock(t)));
+  li.append(el("span", "time", leave === null ? "" : formatClock(leave)));
 
   const name = el("span", "name", s.name);
   const platform = platformLabel(s.stopId, route.mode);
@@ -292,12 +295,12 @@ function renderStop(s: RouteStop, i: number, p: TripProgress, route: TripRoute):
   li.append(name);
 
   if (route.realTime && !s.cancelled && onTimetable(route, i)) {
-    li.append(el("span", "delay timetable", "timetable"));
+    li.append(el("span", "delay timetable", t().timetable));
     return li;
   }
-  const delaySec = t !== null && sched !== null ? (t - sched) / 1000 : 0;
+  const delaySec = leave !== null && sched !== null ? (leave - sched) / 1000 : 0;
   const delay = route.realTime && !s.cancelled ? formatDelay(delaySec) : "";
-  li.append(el("span", delay ? `delay ${delayLevel(delaySec, true)}` : "delay", s.cancelled ? "cancelled" : delay));
+  li.append(el("span", delay ? `delay ${delayLevel(delaySec, true)}` : "delay", s.cancelled ? t().cancelled : delay));
   return li;
 }
 

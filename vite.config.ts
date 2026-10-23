@@ -14,6 +14,8 @@ export default defineConfig({
   environments: {
     client: {
       build: {
+        // Fonts stay real files: the page's CSP only allows fonts from the site itself, not inline data.
+        assetsInlineLimit: (file) => (file.endsWith(".woff2") ? false : undefined),
         rolldownOptions: {
           input: ["index.html", "privacy.html", "de/datenschutzerklaerung.html"],
         },
