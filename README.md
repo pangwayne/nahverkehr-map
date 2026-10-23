@@ -31,7 +31,7 @@ npm run deploy     # build + deploy to Cloudflare (needs `npx wrangler login` on
   passed (by the live or timetable times), the dot sits 40% along that piece of track. It is an estimate,
   not GPS.
 - **Stop search:** runs in the browser on the stop list already loaded; what you type is not sent anywhere.
-- **Location:** "In der Nähe" (Near me) finds the closest stops on your device; the position is not sent anywhere.
+- **Location:** "Mein Standort" (My location) finds the closest stops on your device and marks your position with a red dot; the position is not sent anywhere.
 
 ## Data and attribution
 

@@ -8,7 +8,7 @@ import { fetchTrip } from "./api";
 import type { StopRef } from "./board";
 import { delayLevel, formatClock, formatCountdown, formatDelay, platformLabel, shortName } from "./departures";
 import type { LonLat } from "./geo";
-import { type PanelUser, ageLine, el, offsetClearOfPanel, openPanel, ownsPanel, renderPanel } from "./panel";
+import { type PanelUser, ageLine, el, focusKey, offsetClearOfPanel, openPanel, ownsPanel, renderPanel } from "./panel";
 import { t, onLangChange } from "./i18n";
 import { ageText, resetStatus, setStatus } from "./status";
 import { type RouteStop, type TripProgress, type TripRoute, leaveMs, progressAt, reachMs, tripRoute } from "./trip";
@@ -214,7 +214,7 @@ export function startTripCard(map: maplibregl.Map, onStopTap: (stop: StopRef) =>
     // Passed stops are folded away (all but the last one), so the summary stays at the top.
     const firstShown = showEarlier || progress.next === null ? 0 : Math.max(0, progress.next - 1);
     if (firstShown > 0) {
-      const earlierBtn = el("button", "link-button", t().earlierStops(firstShown));
+      const earlierBtn = focusKey(el("button", "link-button", t().earlierStops(firstShown)), "earlier");
       earlierBtn.addEventListener("click", () => {
         showEarlier = true;
         update();
@@ -236,7 +236,7 @@ export function startTripCard(map: maplibregl.Map, onStopTap: (stop: StopRef) =>
       const old = age > STALE_AFTER_S;
       foot.append(ageLine(ageText(age, old), old));
     }
-    const zoomBtn = el("button", "link-button", t().wholeRoute);
+    const zoomBtn = focusKey(el("button", "link-button", t().wholeRoute), "whole-route");
     const shownRoute = route;
     zoomBtn.addEventListener("click", () => fitRoute(map, shownRoute));
     foot.append(zoomBtn);
@@ -341,12 +341,14 @@ function fitPoints(map: maplibregl.Map, points: LonLat[], maxZoom?: number): voi
     maxLat = Math.max(maxLat, lat);
   }
   const [offsetX, offsetY] = offsetClearOfPanel();
+  const padding = { top: 40, right: 40, left: 40 + offsetX * 2, bottom: 40 - offsetY * 2 };
   map.fitBounds(
     [
       [minLon, minLat],
       [maxLon, maxLat],
     ],
-    { padding: { top: 40, right: 40, left: 40 + offsetX * 2, bottom: 40 - offsetY * 2 }, maxZoom },
+    // Leave maxZoom out when not given: `maxZoom: undefined` replaces MapLibre's default and the zoom becomes NaN.
+    maxZoom === undefined ? { padding } : { padding, maxZoom },
   );
 }
 

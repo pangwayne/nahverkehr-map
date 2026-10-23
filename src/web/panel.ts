@@ -34,11 +34,27 @@ export function openPanel(user: PanelUser): void {
 
 // Replace the content. Ignored if `user` no longer owns the panel (a late answer, say).
 // `title`: plain text, or nodes (the trip card puts the line badge in front of the destination).
+// Keyboard focus survives the redraw: a focused control tagged with `focusKey` gets focus back
+// on its new copy with the same key. Only the title is read out by screen readers, and only when
+// its text changes (a new stop or trip), not on every countdown tick.
 export function renderPanel(user: PanelUser, title: string | Node[], nodes: Node[]): void {
   if (owner !== user) return;
-  if (typeof title === "string") titleEl.textContent = title;
-  else titleEl.replaceChildren(...title);
+  const active = document.activeElement;
+  const key = active instanceof HTMLElement && bodyEl.contains(active) ? active.dataset["focus"] : undefined;
+  const next = document.createElement("h2");
+  if (typeof title === "string") next.textContent = title;
+  else next.replaceChildren(...title);
+  if (next.innerHTML !== titleEl.innerHTML) titleEl.replaceChildren(...next.childNodes);
   bodyEl.replaceChildren(...nodes);
+  if (key !== undefined) {
+    bodyEl.querySelector<HTMLElement>(`[data-focus="${CSS.escape(key)}"]`)?.focus({ preventScroll: true });
+  }
+}
+
+// Tag a control so `renderPanel` can give focus back to it after a redraw.
+export function focusKey<T extends HTMLElement>(node: T, key: string): T {
+  node.dataset["focus"] = key;
+  return node;
 }
 
 // "vor 8 s aktualisiert · neu jede Minute" with a dot: green while fresh, red once the data is old.

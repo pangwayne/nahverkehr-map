@@ -37,7 +37,7 @@ export function createMap(container: HTMLElement): maplibregl.Map {
     },
   });
 
-  // No MapLibre locate button: "Near me" is the only way the app asks for the location (one-off, no tracking).
+  // No MapLibre locate button: "My location" is the only way the app asks for the location (one-off, no tracking).
   map.addControl(new maplibregl.NavigationControl({ showCompass: true }), "top-right");
   map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
 

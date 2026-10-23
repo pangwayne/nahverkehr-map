@@ -30,13 +30,13 @@
         <ul id="search-results" role="listbox" hidden></ul>
       </div>
       <div class="nav-right">
-        <button id="near-me" type="button" data-t-label="nearMeLabel" aria-label="Haltestellen in meiner Nähe">
+        <button id="near-me" type="button" data-t-label="nearMeLabel" aria-label="Mein Standort: Haltestellen in der Nähe zeigen">
           <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
             <circle cx="12" cy="12" r="6" />
             <circle cx="12" cy="12" r="2" />
           </svg>
-          <span class="near-text" data-t="nearMe">In der Nähe</span>
+          <span class="near-text" data-t="nearMe">Mein Standort</span>
         </button>
         <button id="lang" type="button" class="lang-toggle" data-t-label="switchLabel" aria-label="Read in English">
           <svg class="lang-flag flag-en" viewBox="0 0 60 36" width="20" height="12" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
@@ -58,9 +58,9 @@
     </header>
     <div id="map-wrap">
       <main id="map"></main>
-      <section id="board" hidden aria-live="polite">
+      <section id="board" hidden>
         <div class="board-head">
-          <h2 id="board-title"></h2>
+          <h2 id="board-title" aria-live="polite"></h2>
           <button id="board-close" type="button" data-t-label="close" aria-label="Schließen">×</button>
         </div>
         <div id="board-body"></div>

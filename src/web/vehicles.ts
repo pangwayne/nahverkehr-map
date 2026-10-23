@@ -73,9 +73,10 @@ export function stopIndexes(path: LonLat[], stops: LonLat[]): number[] {
 }
 
 // Cut the trip's track line into stop-to-stop segments (once per fetch, not once per frame).
-// Cancelled stops are skipped: the vehicle drives past them.
+// Cancelled stops are skipped: the vehicle drives past them. A wholly cancelled trip gets no
+// segments, so no vehicle is drawn (its stops are not always marked cancelled one by one).
 export function prepareRoute(tripId: string, route: TripRoute): PreparedTrip {
-  const stops = route.stops.filter((s) => !s.cancelled);
+  const stops = route.cancelled ? [] : route.stops.filter((s) => !s.cancelled);
   // Stops whose live times looked wrong now carry timetable times: drawn like "timetable only".
   const timetable = new Set(route.implausibleFrom === null ? [] : route.stops.slice(route.implausibleFrom));
   const at = stopIndexes(

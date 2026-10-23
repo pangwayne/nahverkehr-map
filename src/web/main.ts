@@ -48,6 +48,6 @@ const map = createMap(mapEl);
 // Order matters: the board's stop layers go first, the trip card puts its route line under them
 // and its vehicle on top of everything.
 const board = startBoard(map, (trip) => card.showTrip(trip));
-const card = startTripCard(map, (stop) => void board.showStop(stop));
+const card = startTripCard(map, (stop) => board.showStop(stop));
 startSearch(board);
 closeOnEmptyMapTap(map, ["vehicle-dot", "stop-hit", "trip-route-line", "trip-stop-dot"]);

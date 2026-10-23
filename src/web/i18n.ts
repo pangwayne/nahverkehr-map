@@ -7,14 +7,15 @@ const STORAGE_KEY = "lang";
 
 const de = {
   pageTitle: "Nahverkehr Bonn: Abfahrten live",
-  nearMe: "In der Nähe",
-  nearMeLabel: "Haltestellen in meiner Nähe",
+  nearMe: "Mein Standort",
+  nearMeLabel: "Mein Standort: Haltestellen in der Nähe zeigen",
   switchTo: "EN",
   switchLabel: "Read in English",
   portraitLabel: "Pang Wayne Wee, zur Website",
   close: "Schließen",
   searchLabel: "Haltestelle suchen",
   searchLoading: "Haltestellen laden...",
+  stopsFailed: "Haltestellen konnten nicht geladen werden. Neuer Versuch läuft...",
   searchNone: "Keine Haltestelle gefunden",
   idle: "Haltestelle suchen oder auf der Karte antippen",
   loading: "lädt...",
@@ -31,6 +32,7 @@ const de = {
   youAreHere: "Du bist hier",
 
   loadingDepartures: "Abfahrten laden...",
+  noBoardForStop: "Für diese Haltestelle gibt es hier keine Abfahrten.",
   noDepartures: "Keine Abfahrten in nächster Zeit.",
   departuresUnavailable: "Abfahrten gerade nicht verfügbar. Neuer Versuch läuft...",
   extraTrip: "Sonderfahrt, keine Details",
@@ -79,14 +81,15 @@ const de = {
 
 const en: typeof de = {
   pageTitle: "Nahverkehr Bonn: live departures",
-  nearMe: "Near me",
-  nearMeLabel: "Stops near me",
+  nearMe: "My location",
+  nearMeLabel: "My location: show nearby stops",
   switchTo: "DE",
   switchLabel: "Auf Deutsch lesen",
   portraitLabel: "Pang Wayne Wee, to the website",
   close: "Close",
   searchLabel: "Search stops",
   searchLoading: "Loading stops...",
+  stopsFailed: "Couldn't load the stops. Retrying...",
   searchNone: "No stop found",
   idle: "Search for a stop or tap one on the map",
   loading: "loading...",
@@ -103,6 +106,7 @@ const en: typeof de = {
   youAreHere: "You are here",
 
   loadingDepartures: "Loading departures...",
+  noBoardForStop: "No departures available for this stop here.",
   noDepartures: "No departures soon.",
   departuresUnavailable: "Departures unavailable right now. Retrying...",
   extraTrip: "extra trip, no details",

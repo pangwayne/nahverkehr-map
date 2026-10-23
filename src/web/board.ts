@@ -1,4 +1,4 @@
-// Stops on the map plus the departure board: tap a stop, or press "Near me".
+// Stops on the map plus the departure board: tap a stop, or press "My location".
 // Tapping a departure opens its trip card (route and vehicle on the map).
 // The user's location stays on the phone: only stop IDs are ever sent to the Worker.
 
@@ -15,7 +15,7 @@ import {
   toRows,
   upcoming,
 } from "./departures";
-import { type PanelUser, ageLine, el, offsetClearOfPanel, openPanel, ownsPanel, renderPanel } from "./panel";
+import { type PanelUser, ageLine, el, focusKey, offsetClearOfPanel, openPanel, ownsPanel, renderPanel } from "./panel";
 import { t, onLangChange } from "./i18n";
 import { ageText, resetStatus, setStatus } from "./status";
 import { type Station, groupStations, matchStation, nearestStations } from "./stops";
@@ -24,12 +24,12 @@ import type { TripRef } from "./tripcard";
 const POLL_MS = 60_000;
 const TICK_MS = 10_000; // countdowns re-render, and the poll timer is checked
 const FETCH_TIMEOUT_MS = 15_000;
-const STOPS_RETRY_MS = 60_000;
+const STOPS_RETRY_MS = [5_000, 15_000, 60_000]; // then every 60 s, only while the page is visible
 const STALE_AFTER_S = 120;
 const ROWS_PER_STATION = 8;
 const ROWS_NEARBY = 12;
 
-// "Near me": stations within ~6 minutes' walk; if none, the single nearest one up to 2 km away.
+// "My location": stations within ~6 minutes' walk; if none, the single nearest one up to 2 km away.
 const NEAR_RADIUS_M = 500;
 const NEAR_LIMIT = 3;
 const NEAR_FALLBACK_M = 2000;
@@ -59,10 +59,12 @@ export interface StopRef {
 }
 
 export interface Board {
-  showStop(stop: StopRef): Promise<void>;
+  showStop(stop: StopRef): void;
   showStation(station: Station, zoomIn?: boolean): void;
   stations(): Station[]; // empty until the stop list has arrived
   stationsReady: Promise<void>;
+  stationsFailed(): boolean; // the last try to load the stop list failed (another one is on the way)
+  onStationsChange(listener: () => void): void; // the list arrived, or a try failed
 }
 
 // `onTripTap`: a departure row was tapped (opens that trip's card).
@@ -72,6 +74,8 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
 
   let stations: Station[] = [];
   const byId = new Map<string, Station>();
+  let stationsFailed = false;
+  const stationsListeners: (() => void)[] = [];
   const stationsReady = loadStations();
 
   // Functions, so a language switch redraws them in the new language.
@@ -82,6 +86,7 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
   let generation = 0; // bumps whenever the board changes, so late answers are ignored
   let lastPollMs = 0;
   let hereMarker: maplibregl.Marker | null = null;
+  let glowMarkers: maplibregl.Marker[] = [];
 
   map.on("load", () => {
     addLayers(map);
@@ -117,17 +122,27 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
   });
 
   async function loadStations(): Promise<void> {
-    for (;;) {
+    for (let attempt = 0; ; attempt++) {
       try {
         const { data } = await fetchStops(AbortSignal.timeout(FETCH_TIMEOUT_MS));
         stations = groupStations(data);
         for (const s of stations) byId.set(s.id, s);
+        stationsFailed = false;
         updateSource();
+        stationsChanged();
         return;
       } catch {
-        await new Promise((r) => setTimeout(r, STOPS_RETRY_MS));
+        stationsFailed = true;
+        stationsChanged();
+        await new Promise((r) => setTimeout(r, STOPS_RETRY_MS[Math.min(attempt, STOPS_RETRY_MS.length - 1)]));
+        await whenVisible(); // no retries from a hidden tab
       }
     }
+  }
+
+  function stationsChanged(): void {
+    for (const listener of stationsListeners) listener();
+    if (ownsPanel(user) && message) render(); // e.g. "My location" waiting for the stop list
   }
 
   function updateSource(): void {
@@ -148,7 +163,7 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
     title = heading;
     message = null;
     results = new Map();
-    highlight(list.map((s) => s.station.id));
+    highlight(list.map((s) => s.station));
     render();
     void refresh();
   }
@@ -169,15 +184,18 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
     shown = [];
     message = null;
     highlight([]);
-    hereMarker?.remove();
-    hereMarker = null;
-    resetStatus();
+    resetStatus(); // the "you are here" dot stays until the next press or a reload
   }
 
-  function highlight(ids: string[]): void {
+  // Highlighted stops: a soft mint circle (map layer) plus a pulsing glow on top (a CSS animation: no map redraws).
+  function highlight(list: Station[]): void {
     if (map.getLayer("stop-selected")) {
-      map.setFilter("stop-selected", ["in", ["get", "id"], ["literal", ids]]);
+      map.setFilter("stop-selected", ["in", ["get", "id"], ["literal", list.map((s) => s.id)]]);
     }
+    for (const m of glowMarkers) m.remove();
+    glowMarkers = list.map((s) =>
+      new maplibregl.Marker({ element: el("div", "stop-glow") }).setLngLat([s.lon, s.lat]).addTo(map),
+    );
   }
 
   async function refresh(): Promise<void> {
@@ -213,12 +231,18 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
       return;
     }
     showMessage(nearYou, () => t().findingYou);
-    const gen = generation;
+    let gen = generation;
 
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        await stationsReady;
         if (gen !== generation) return; // the user did something else meanwhile
+        if (!stations.length) {
+          // Located, but the stop list is not here yet: say so instead of "finding you".
+          showMessage(nearYou, () => (stationsFailed ? t().stopsFailed : t().searchLoading));
+          gen = generation;
+          await stationsReady;
+          if (gen !== generation) return;
+        }
         const { longitude: lon, latitude: lat } = pos.coords;
         let near = nearestStations(stations, lon, lat, NEAR_RADIUS_M, NEAR_LIMIT);
         if (near.length === 0) near = nearestStations(stations, lon, lat, NEAR_FALLBACK_M, 1);
@@ -259,7 +283,7 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
     const now = Date.now();
     const parts: HTMLElement[] = [];
 
-    // Near me: say which stops are included, then one combined list (stop name on every row).
+    // My location: say which stops are included, then one combined list (stop name on every row).
     const nearby = shown.length > 1 || shown[0]?.distanceM !== null;
     if (nearby) {
       const names = shown.map((s) => `${s.station.name} ${roundM(s.distanceM ?? 0)} m`).join(" · ");
@@ -300,15 +324,38 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
   }
 
   return {
-    async showStop(stop: StopRef): Promise<void> {
-      await stationsReady;
-      const station = matchStation(stations, stop);
+    // A stop on a trip's route. Outside Bonn (or before the stop list is here) it is not one of our
+    // stations, but the Worker takes any German stop ID, so its board opens anyway.
+    showStop(stop: StopRef): void {
+      const station = matchStation(stations, stop) ?? oneOffStation(stop);
       if (station) showStation(station);
+      else showMessage(() => stop.name, () => t().noBoardForStop);
     },
     showStation,
     stations: () => stations,
     stationsReady,
+    stationsFailed: () => stationsFailed,
+    onStationsChange(listener: () => void): void {
+      stationsListeners.push(listener);
+    },
   };
+}
+
+function oneOffStation(stop: StopRef): Station | null {
+  if (!stop.stopId) return null;
+  return { id: stop.stopId, name: stop.name, lon: stop.lon, lat: stop.lat, stopIds: [stop.stopId], hasTram: false };
+}
+
+function whenVisible(): Promise<void> {
+  if (document.visibilityState === "visible") return Promise.resolve();
+  return new Promise((resolve) => {
+    const check = () => {
+      if (document.visibilityState !== "visible") return;
+      document.removeEventListener("visibilitychange", check);
+      resolve();
+    };
+    document.addEventListener("visibilitychange", check);
+  });
 }
 
 const roundM = (m: number) => Math.round(m / 10) * 10;
@@ -351,6 +398,7 @@ function renderRow(
   if (!r.extra) {
     li.classList.add("tappable");
     li.tabIndex = 0;
+    focusKey(li, `${r.tripId}|${r.stopName}`); // near me: one trip can pass two of the shown stops
     li.setAttribute("role", "button");
     const tap = () => onTripTap({ tripId: r.tripId, line: r.line, color, focus: [r.lon, r.lat] });
     li.addEventListener("click", tap);
@@ -385,8 +433,8 @@ function addLayers(map: maplibregl.Map): void {
     filter: ["in", ["get", "id"], ["literal", []]],
     paint: {
       "circle-radius": ["interpolate", ["linear"], ["zoom"], 12, 7, 17, 12],
-      "circle-color": "#ffd54f",
-      "circle-opacity": 0.8,
+      "circle-color": "#3ee6c1", // site mint; the pulse on top is the .stop-glow marker (style.css)
+      "circle-opacity": 0.6,
     },
   });
 

@@ -39,7 +39,13 @@ export function startSearch(board: Board): void {
   // Tapping a result: mousedown comes before the input's blur.
   list.addEventListener("mousedown", (e) => e.preventDefault());
   onLangChange(() => {
-    if (!list.hidden) render();
+    if (list.hidden) return;
+    if (board.stations().length) render();
+    else void update(); // the "loading" note, in the new language
+  });
+  // Still waiting for the stop list: "loading" turns into "couldn't load", then into results.
+  board.onStationsChange(() => {
+    if (document.activeElement === input) void update();
   });
 
   async function update(): Promise<void> {
@@ -49,9 +55,8 @@ export function startSearch(board: Board): void {
       return;
     }
     if (!board.stations().length) {
-      showNote(t().searchLoading);
-      await board.stationsReady;
-      if (input.value !== query || document.activeElement !== input) return;
+      showNote(board.stationsFailed() ? t().stopsFailed : t().searchLoading);
+      return; // onStationsChange runs this again
     }
     results = searchStations(board.stations(), query, MAX_RESULTS);
     active = -1;

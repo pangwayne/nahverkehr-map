@@ -31,7 +31,7 @@ const SECURITY_HEADERS: Record<string, string> = {
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
   "Referrer-Policy": "strict-origin-when-cross-origin",
-  // Location only for this site itself ("Near me"); nothing else is used.
+  // Location only for this site itself ("My location"); nothing else is used.
   "Permissions-Policy": "geolocation=(self), camera=(), microphone=(), payment=(), usb=()",
 };
 
