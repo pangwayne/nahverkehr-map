@@ -1,7 +1,11 @@
-/* Privacy pages: plain readable text, nothing loaded from other sites. */
+/* Privacy pages: plain readable text. Only the header photo comes from www.pangwayne.com;
+   the font is the app's own (served from this site). */
+@import "@fontsource-variable/hanken-grotesk/wght.css";
+
 :root {
   color-scheme: light dark;
-  font-family: system-ui, sans-serif;
+  font-family: "Hanken Grotesk Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
   line-height: 1.55;
 }
 
