@@ -36,6 +36,7 @@ const NEAR_FALLBACK_M = 2000;
 const SOURCE_ID = "stops";
 const VEHICLE_LAYER = "vehicle-dot";
 const STOPS_MIN_ZOOM = 13; // the start zoom: with no vehicles drawn, stops are what you see first
+const SEARCH_ZOOM = 15;
 
 interface Shown {
   station: Station;
@@ -58,6 +59,9 @@ export interface StopRef {
 
 export interface Board {
   showStop(stop: StopRef): Promise<void>;
+  showStation(station: Station, zoomIn?: boolean): void;
+  stations(): Station[]; // empty until the stop list has arrived
+  stationsReady: Promise<void>;
 }
 
 // `onTripTap`: a departure row was tapped (opens that trip's card).
@@ -129,9 +133,11 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
     map.getSource<maplibregl.GeoJSONSource>(SOURCE_ID)?.setData(toGeoJSON(stations));
   }
 
-  function showStation(station: Station): void {
+  // `zoomIn`: also zoom in far enough to see the stop (used by the search, where the map may be far off).
+  function showStation(station: Station, zoomIn = false): void {
     open([{ station, distanceM: null }], () => station.name);
-    map.easeTo({ center: [station.lon, station.lat], offset: offsetClearOfPanel() });
+    const zoom = zoomIn ? Math.max(map.getZoom(), SEARCH_ZOOM) : map.getZoom();
+    map.easeTo({ center: [station.lon, station.lat], zoom, offset: offsetClearOfPanel() });
   }
 
   function open(list: Shown[], heading: () => string): void {
@@ -298,6 +304,9 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
       const station = matchStation(stations, stop);
       if (station) showStation(station);
     },
+    showStation,
+    stations: () => stations,
+    stationsReady,
   };
 }
 

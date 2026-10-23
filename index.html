@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="/src/web/style.css" />
   </head>
   <body>
-    <!-- Texts with data-t / data-t-label / data-href are filled in by src/web/main.ts from src/web/i18n.ts (German is the default). -->
+    <!-- Texts with data-t / data-t-label / data-t-placeholder / data-href are filled in by src/web/main.ts from src/web/i18n.ts (German is the default). -->
     <header class="site-header">
       <a class="logo" href="https://www.pangwayne.com" data-t-label="portraitLabel" aria-label="Pang Wayne Wee, zur Website">
         <img class="logo-photo" src="https://www.pangwayne.com/images/wayne-portrait-square.jpg" alt="" width="34" height="34" />
@@ -18,6 +18,16 @@
       <div class="app-title">
         <h1>Nahverkehr <span class="pill">Bonn</span></h1>
         <p id="status">…</p>
+      </div>
+      <div class="search" role="search">
+        <svg class="search-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m20 20-3.5-3.5" />
+        </svg>
+        <input id="search" type="search" autocomplete="off" spellcheck="false" enterkeyhint="search"
+          role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="search-results"
+          data-t-label="searchLabel" aria-label="Haltestelle suchen" data-t-placeholder="searchLabel" placeholder="Haltestelle suchen" />
+        <ul id="search-results" role="listbox" hidden></ul>
       </div>
       <div class="nav-right">
         <button id="near-me" type="button" data-t-label="nearMeLabel" aria-label="Haltestellen in meiner Nähe">

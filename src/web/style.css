@@ -133,6 +133,85 @@ body {
   text-overflow: ellipsis;
 }
 
+/* Stop search: a field in the header, results drop down over the map. */
+.search {
+  position: relative;
+  flex: 0 1 320px;
+  min-width: 180px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--head-soft);
+  pointer-events: none;
+}
+
+#search {
+  box-sizing: border-box;
+  width: 100%;
+  height: 38px;
+  padding: 0 12px 0 38px;
+  border: 1px solid var(--head-border);
+  border-radius: 999px;
+  background: #ffffff0f;
+  color: var(--head-ink);
+  font: inherit;
+  font-size: 15px;
+}
+
+#search::placeholder {
+  color: var(--head-soft);
+}
+
+#search:focus {
+  outline: none;
+  border-color: var(--mint);
+  box-shadow: 0 0 0 3px rgba(62, 230, 193, 0.18);
+}
+
+#search-results {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 10; /* above the map controls and the departure board */
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+}
+
+#search-results[hidden] {
+  display: none;
+}
+
+.search-result {
+  padding: 9px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.search-result:hover,
+.search-result.active {
+  background: var(--hover);
+}
+
+.search-note {
+  padding: 9px 10px;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
 .nav-right {
   flex: none;
   display: flex;
@@ -198,11 +277,31 @@ html[lang="en"] .flag-en {
   display: none;
 }
 
+/* Middle widths: make room for the search by dropping the name next to the portrait. */
+@media (max-width: 900px) {
+  .logo-name,
+  .divider {
+    display: none;
+  }
+}
+
 /* Phones: portrait only, and the location button as an icon (its label stays for screen readers). */
 @media (max-width: 640px) {
   .site-header {
-    gap: 10px;
-    padding: 8px 12px;
+    flex-wrap: wrap;
+    gap: 8px 10px;
+    padding: 8px 12px 10px;
+  }
+
+  /* The search gets its own full-width row under the title. */
+  .search {
+    order: 1;
+    flex: 1 0 100%;
+  }
+
+  #search {
+    height: 42px;
+    font-size: 16px; /* 16px stops iPhones zooming in on focus */
   }
 
   .logo-name,

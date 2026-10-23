@@ -114,3 +114,63 @@ export function nearestStations(
     .sort((a, b) => a.distanceM - b.distanceM)
     .slice(0, limit);
 }
+
+// Short forms used in stop names, so "Hauptbahnhof" finds "Bonn Hbf" and "Straße" finds "Str.".
+const SHORT_FORMS: [string, string][] = [
+  ["hauptbahnhof", "hbf"],
+  ["bahnhof", "bf"],
+  ["strasse", "str"],
+  ["platz", "pl"],
+];
+
+// Lower case, no accents ("ü" -> "u", "ß" -> "ss"), long words shortened like in the stop names.
+export function searchText(text: string): string {
+  let s = text.toLowerCase().replace(/ß/g, "ss").normalize("NFD").replace(/[̀-ͯ]/g, "");
+  for (const [long, short] of SHORT_FORMS) s = s.replaceAll(long, short);
+  return s;
+}
+
+function words(text: string): string[] {
+  return text.split(/[^a-z0-9]+/).filter(Boolean);
+}
+
+// The ways one typed word can appear in a stop name: itself, or the short form of a word being typed
+// ("hauptbah" may become "hbf").
+function variants(typed: string): string[] {
+  const out = [typed];
+  if (typed.length >= 4) {
+    for (const [long, short] of SHORT_FORMS) if (long.startsWith(typed)) out.push(short);
+  }
+  return out;
+}
+
+// Stations whose name contains every typed word, best first: a name word starting with the first
+// typed word beats one containing it; then shorter names. "Bonn" alone matches everything, so it only
+// counts when other words are typed too.
+export function searchStations(stations: Station[], query: string, limit: number): Station[] {
+  let typed = words(searchText(query));
+  if (typed.length > 1) typed = typed.filter((w) => w !== "bonn");
+  if (typed.length === 0) return [];
+
+  const hits: { station: Station; rank: number }[] = [];
+  for (const station of stations) {
+    const name = searchText(station.name);
+    const nameWords = words(name);
+    let rank = 0;
+    let ok = true;
+    for (const [i, w] of typed.entries()) {
+      const forms = variants(w);
+      const atStart = forms.some((f) => nameWords.some((nw) => nw.startsWith(f)));
+      if (!atStart && !forms.some((f) => f.length >= 3 && name.includes(f))) {
+        ok = false;
+        break;
+      }
+      if (!atStart) rank += i === 0 ? 2 : 1;
+    }
+    if (ok) hits.push({ station, rank });
+  }
+  return hits
+    .sort((a, b) => a.rank - b.rank || a.station.name.length - b.station.name.length || a.station.name.localeCompare(b.station.name))
+    .slice(0, limit)
+    .map((h) => h.station);
+}
