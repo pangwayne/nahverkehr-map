@@ -1,5 +1,5 @@
-// The route panel: pick a start and a destination stop and a time, then see up to 5 connections.
-// Shown only with ?route=1 while it is being built (see private/handoff.md, routing step R3).
+// The route panel: pick a start and a destination stop and a time, then see up to 5 connections, open one
+// to see its details and draw it on the map, and follow any ride in its trip card.
 // Light on Transitous: a search runs only when the button is pressed, one at a time, never by itself.
 // Only stop IDs and the time leave the phone; "My location" picks the nearest stop on the phone.
 

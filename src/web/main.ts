@@ -64,21 +64,15 @@ try {
 if (map) {
   // Order matters: the board's stop layers go first, the trip card puts its route line under them
   // and its vehicle on top of everything; a chosen connection's lines also go under the stops.
-  // The route planner is still being built: only with ?route=1 in the address.
-  const routeOn = new URLSearchParams(location.search).get("route") === "1";
   const board = startBoard(
     map,
     (trip) => card.showTrip(trip),
-    routeOn ? (station, end) => route.open(end === "from" ? { from: station } : { to: station }) : null,
+    (station, end) => route.open(end === "from" ? { from: station } : { to: station }),
   );
   const card = startTripCard(map, (stop) => board.showStop(stop));
   startSearch(board);
   const route = startRoute(board, map, (trip) => card.showTrip(trip));
-  if (routeOn) {
-    const btn = document.querySelector<HTMLButtonElement>("#route-btn")!;
-    btn.hidden = false;
-    btn.addEventListener("click", () => route.open());
-  }
+  document.querySelector("#route-btn")!.addEventListener("click", () => route.open());
   closeOnEmptyMapTap(map, [
     "vehicle-dot",
     "stop-hit",

@@ -40,8 +40,8 @@
       <h2>2. Nutzung dieser App</h2>
       <p>
         Wenn Sie die App aufrufen, sendet Ihr Browser technische Daten an meinen Hosting-Anbieter Cloudflare: Ihre
-        IP-Adresse, Datum und Uhrzeit, die aufgerufene Adresse (zum Beispiel die Abfahrten welcher Haltestelle),
-        die zuvor besuchte Seite sowie Browser und Betriebssystem. Cloudflare nutzt diese Daten, um die App
+        IP-Adresse, Datum und Uhrzeit, die aufgerufene Adresse (zum Beispiel die Abfahrten welcher Haltestelle oder
+        Start, Ziel und Zeit einer Routensuche), die zuvor besuchte Seite sowie Browser und Betriebssystem. Cloudflare nutzt diese Daten, um die App
         auszuliefern und vor Angriffen zu schützen. Das Foto in der Kopfzeile stammt von meiner Website
         www.pangwayne.com, die ebenfalls bei Cloudflare liegt; dort gilt dasselbe.
       </p>
@@ -58,8 +58,8 @@
       <p>
         <strong>Schutz vor Überlastung:</strong> Damit niemand die App mit massenhaften Anfragen lahmlegt, zählt
         mein Server je IP-Adresse, wie viele Abfahrten und Fahrten in der letzten Minute neu bei Transitous
-        (Abschnitt 6) abgefragt wurden, und lehnt weitere ab, wenn es mehr als 100 sind. Der Zähler gilt nur für
-        diese Minute und wird nicht gespeichert.
+        (Abschnitt 6) abgefragt wurden, und lehnt weitere ab, wenn es mehr als 100 sind; Routensuchen haben einen
+        eigenen Zähler mit einer Grenze von 10. Die Zähler gelten nur für diese Minute und werden nicht gespeichert.
       </p>
       <p>
         <strong>Rechtsgrundlage:</strong> mein berechtigtes Interesse an einer sicheren, funktionierenden App
@@ -123,7 +123,8 @@
       <h2>5. „Mein Standort“</h2>
       <p>
         Die Nutzung Ihres Standorts ist freiwillig. Die App liest ihn nur, wenn Sie auf <strong>Mein Standort</strong>
-        tippen, einmal pro Tippen; sie verfolgt Ihren Standort nicht. Beim ersten Mal fragt Ihr Browser, ob die App
+        oder in der Routensuche auf die Standort-Taste neben „Von“ (<strong>Mein Standort als Start</strong>) tippen,
+        einmal pro Tippen; sie verfolgt Ihren Standort nicht. Beim ersten Mal fragt Ihr Browser, ob die App
         Ihren Standort verwenden darf; haben Sie das früher schon erlaubt, fragt der Browser eventuell nicht erneut.
       </p>
       <p>
@@ -143,22 +144,44 @@
         </li>
       </ul>
       <p>
-        <strong>Rechtsgrundlage:</strong> Ihre Einwilligung, die Sie durch Tippen auf „Mein Standort“ und Erlauben des
+        In der Routensuche trägt die Taste nur die nächstgelegene Haltestelle als Start ein; die Karte bewegt sich
+        nicht und es wird nichts geladen, bis Sie suchen. Mit der Suche wird dann nur diese Haltestelle übermittelt
+        (Abschnitt 6).
+      </p>
+      <p>
+        <strong>Rechtsgrundlage:</strong> Ihre Einwilligung, die Sie durch Tippen auf eine dieser Tasten und Erlauben des
         Standortzugriffs erteilen (Art. 6 Abs. 1 lit. a DSGVO, § 25 Abs. 1 TDDDG). Sie können sie jederzeit
         widerrufen, indem Sie die Standortberechtigung für diese Seite in Ihren Browser-Einstellungen entfernen;
         das berührt nicht, was vorher geschehen ist. Ohne Standort können Sie die App weiter nutzen, indem Sie
         Haltestellen suchen oder auf der Karte antippen.
       </p>
 
-      <h2>6. Live-Abfahrten</h2>
+      <h2>6. Live-Abfahrten und Routensuche</h2>
       <p>
-        Fahrpläne und Live-Abfahrten stammen von <a href="https://transitous.org/">Transitous</a>. Mein Server ruft
-        sie stellvertretend für Sie ab; Transitous erhält daher weder Ihre IP-Adresse noch andere Daten über Sie.
+        Fahrpläne, Live-Abfahrten und Verbindungen stammen von <a href="https://transitous.org/">Transitous</a>.
+        Mein Server ruft sie stellvertretend für Sie ab; Transitous erhält daher nur, was es für die Antwort braucht
+        (welche Haltestelle, welche Fahrt oder Start, Ziel und Zeit einer Routensuche), aber weder Ihre IP-Adresse
+        noch andere Daten über Sie.
       </p>
       <p>
         Die Haltestellensuche läuft in Ihrem Browser auf der Haltestellenliste, die die App ohnehin geladen hat.
         Was Sie eintippen, wird weder an mich noch an andere übermittelt; erst die gewählte Haltestelle wird
-        geladen, wie beim Antippen auf der Karte (Abschnitt 2).
+        geladen, wie beim Antippen auf der Karte (Abschnitt 2). Das gilt auch für die Felder „Von“ und „Nach“ der
+        Routensuche.
+      </p>
+      <p>
+        <strong>Routensuche:</strong> Wenn Sie auf „Verbindungen suchen“ tippen, sendet die App die gewählte Start- und
+        Ziel-Haltestelle, Datum und Uhrzeit sowie, ob Sie dann abfahren oder ankommen möchten, an meinen Server, der
+        bei Transitous nach Verbindungen fragt. „Früher“, „Später“ und „Aktualisieren“ senden dieselbe Suche erneut.
+        Während Sie das Formular ausfüllen, wird nichts gesendet. Ich speichere Ihre Suchen nicht, und die App führt
+        keinen Suchverlauf; die Antwort wird nur in der geöffneten Seite angezeigt. Wie jede Anfrage gehört die Suche
+        zu den technischen Daten und Fehlerprotokollen bei Cloudflare (Abschnitt 2). Damit mehrere Personen, die im
+        selben Moment dasselbe fragen, nur eine Anfrage bei Transitous auslösen, hält mein Server die Antwort bis zu
+        zwei Minuten bereit, ohne Angaben darüber, wer gefragt hat.
+      </p>
+      <p>
+        <strong>Rechtsgrundlage:</strong> mein berechtigtes Interesse an einer funktionierenden Fahrplan- und
+        Routensuche (Art. 6 Abs. 1 lit. f DSGVO).
       </p>
 
       <h2>7. E-Mail</h2>
@@ -191,7 +214,7 @@
       <div class="highlight">
         <p>
           <strong>Widerspruchsrecht (Art. 21 DSGVO)</strong><br />
-          Soweit ich Ihre Daten auf Grundlage meines berechtigten Interesses verarbeite (Abschnitte 2, 4 und 7),
+          Soweit ich Ihre Daten auf Grundlage meines berechtigten Interesses verarbeite (Abschnitte 2, 4, 6 und 7),
           können Sie dem jederzeit aus Gründen, die sich aus Ihrer besonderen Situation ergeben, widersprechen. Ich
           verarbeite die Daten dann nicht mehr, es sei denn, ich kann zwingende schutzwürdige Gründe nachweisen, die
           Ihre Interessen überwiegen, oder die Verarbeitung dient der Geltendmachung, Ausübung oder Verteidigung von

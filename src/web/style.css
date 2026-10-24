@@ -263,10 +263,6 @@ body {
   cursor: pointer;
 }
 
-#route-btn[hidden] {
-  display: none;
-}
-
 #route-btn:hover {
   background: #3ee6c11f;
 }

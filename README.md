@@ -3,6 +3,7 @@
 A mobile-friendly map of the stops in Bonn, Köln, Düsseldorf and the towns around them, with live
 departures (trams, Stadtbahn, buses, regional trains). Search for a
 stop or tap one on the map, then tap a departure to see its route and where the vehicle is right now.
+Or plan a route from one stop to another and follow each ride on the map.
 German by default, with an English switch. Non-commercial hobby project.
 
 Vehicle positions are **estimated** from live delay predictions, not GPS. No free feed for this area
@@ -25,10 +26,11 @@ npm run deploy     # build + deploy to Cloudflare (needs `npx wrangler login` on
 
 - **Browser** (`src/web`): the map (MapLibre), stop search, departure board and trip card. All texts are
   in `src/web/i18n.ts` (German and English); the language choice is kept in the browser only.
-- **Cloudflare Worker** (`src/worker`): forwards `/api/stops`, `/api/departures` and `/api/trip` to the
-  [Transitous](https://transitous.org/) API and caches the answers, so many visitors asking about the same
-  stop share one upstream request. Failed answers are remembered briefly too, and each visitor may cause at
-  most 100 upstream requests a minute. It also adds the security headers to the pages.
+- **Cloudflare Worker** (`src/worker`): forwards `/api/stops`, `/api/departures`, `/api/trip` and
+  `/api/plan` to the [Transitous](https://transitous.org/) API and caches the answers, so many visitors asking
+  about the same stop share one upstream request. Failed answers are remembered briefly too, and each visitor
+  may cause at most 100 upstream requests a minute (route searches: 10). It checks every value and builds
+  the Transitous request itself, so it is not an open proxy. It also adds the security headers to the pages.
 - **Vehicle position:** a trip's track line is cut at its stops. If 40% of the time between two stops has
   passed (by the live or timetable times), the dot sits 40% along that piece of track. It is an estimate,
   not GPS.
@@ -40,6 +42,11 @@ npm run deploy     # build + deploy to Cloudflare (needs `npx wrangler login` on
   The town, its plate or no town at all all work ("bonn hbf", "k neumarkt", "wehrhahn").
 - **Map view:** a reload opens the map where you left it (kept in that browser tab only, until it is closed).
 - **Location:** "Mein Standort" (My location) finds the closest stops on your device and marks your position with a red dot; the position is not sent anywhere.
+- **Route search:** pick a start and a destination stop (or use your location as the start: the closest
+  stop is picked on your device) and a time. Only the two stops and the time are sent, and only when you
+  press the button. Up to 5 connections (trams, buses, S-Bahn and regional trains, no IC/ICE) with live
+  delays, earlier and later ones, the details of each and the connection drawn on the map; any ride opens
+  its trip card. Searches are not stored.
 
 ## Data and attribution
 

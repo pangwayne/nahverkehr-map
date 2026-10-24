@@ -40,8 +40,9 @@
       <h2>2. Visiting this app</h2>
       <p>
         When you open the app, your browser sends technical data to my hosting provider Cloudflare: your IP
-        address, date and time, the address requested (for example which stop's departures), the page you came
-        from, and your browser and operating system. Cloudflare uses this data to deliver the app and to protect
+        address, date and time, the address requested (for example which stop's departures, or the start and
+        destination stops and the time of a route search), the page you came from, and your browser and
+        operating system. Cloudflare uses this data to deliver the app and to protect
         it from attacks. The photo in the header comes from my website www.pangwayne.com, which Cloudflare
         also hosts, so the same applies there.
       </p>
@@ -57,7 +58,8 @@
       <p>
         <strong>Protection against overload:</strong> So nobody can swamp the app with mass requests, my server
         counts per IP address how many departures and trips were newly fetched from Transitous (section 6) in the
-        last minute, and refuses more once there are over 100. The count only lasts that minute and is not stored.
+        last minute, and refuses more once there are over 100; route searches have their own count, with a limit of
+        10. The counts only last that minute and are not stored.
       </p>
       <p>
         <strong>Legal basis:</strong> my legitimate interest in a secure, working app (Art. 6(1)(f) GDPR). The bot
@@ -117,7 +119,8 @@
 
       <h2>5. "My location"</h2>
       <p>
-        Using your location is optional. The app reads it only when you press <strong>My location</strong> (in German: Mein Standort), once
+        Using your location is optional. The app reads it only when you press <strong>My location</strong> (in German: Mein Standort),
+        or the location button next to "From" in the route search (<strong>Use my location as start</strong>), once
         per press; it does not follow you. The first time, your browser asks whether the app may use your
         location; if you allowed it earlier, the browser may not ask again.
       </p>
@@ -137,20 +140,40 @@
         </li>
       </ul>
       <p>
-        <strong>Legal basis:</strong> your consent, given by pressing My location (Mein Standort) and allowing location access
+        In the route search, the button only fills in the stop closest to you as the start; the map does not move
+        and nothing is loaded until you search. Only that stop is then sent with the search (section 6).
+      </p>
+      <p>
+        <strong>Legal basis:</strong> your consent, given by pressing one of these buttons and allowing location access
         (Art. 6(1)(a) GDPR, Section 25(1) TDDDG). You can withdraw it at any time by removing the location
         permission for this site in your browser settings; this does not affect what happened before. Without
         it, you can still use the app by searching for stops or tapping them on the map.
       </p>
 
-      <h2>6. Live departures</h2>
+      <h2>6. Live departures and route search</h2>
       <p>
-        Timetables and live departures come from <a href="https://transitous.org/">Transitous</a>. My server
-        fetches them on your behalf, so Transitous never receives your IP address or any other data about you.
+        Timetables, live departures and connections come from <a href="https://transitous.org/">Transitous</a>.
+        My server fetches them on your behalf, so Transitous receives only what it needs to answer (which stop,
+        which trip, or the stops and time of a route search), never your IP address or any other data about you.
       </p>
       <p>
         The stop search runs in your browser on the stop list the app has already loaded. What you type is not
-        sent to me or anyone else; only the stop you then pick is loaded, like a tap on the map (section 2).
+        sent to me or anyone else; only the stop you then pick is loaded, like a tap on the map (section 2). The
+        same goes for the "From" and "To" fields of the route search.
+      </p>
+      <p>
+        <strong>Route search:</strong> when you press "Find connections" (in German: Verbindungen suchen), the app
+        sends the start and destination stops you picked, the date and time, and whether you want to leave or
+        arrive then, to my server, which asks Transitous for connections. "Earlier", "Later" and "Refresh" send the
+        same search again. Nothing is sent while you fill in the form. I do not store your searches and the app
+        keeps no search history; the answer is shown only in the open page. Like every request, the search is part
+        of Cloudflare's technical data and error logs (section 2). So that several people asking the same thing at
+        the same moment cause only one request to Transitous, my server keeps the answer for up to two minutes, without
+        any information about who asked.
+      </p>
+      <p>
+        <strong>Legal basis:</strong> my legitimate interest in offering a working timetable and route search
+        (Art. 6(1)(f) GDPR).
       </p>
 
       <h2>7. Email</h2>
@@ -182,7 +205,7 @@
       <div class="highlight">
         <p>
           <strong>Right to object (Art. 21 GDPR)</strong><br />
-          Where I process your data based on my legitimate interest (sections 2, 4 and 7), you can object at any
+          Where I process your data based on my legitimate interest (sections 2, 4, 6 and 7), you can object at any
           time for reasons arising from your particular situation. I will then stop, unless I can show compelling
           legitimate grounds that override your interests, or the processing serves the establishment, exercise or
           defence of legal claims.
