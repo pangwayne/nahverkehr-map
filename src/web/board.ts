@@ -333,7 +333,8 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
       parts.push(el("p", "board-note board-error", t().departuresUnavailable));
     } else if (ageS !== null) {
       const old = ageS > STALE_AFTER_S;
-      parts.push(ageLine(`${ageText(ageS, old)} · ${t().everyMinute}`, old));
+      const text = anyError ? ageText(ageS, old, true) : `${ageText(ageS, old)} · ${t().everyMinute}`;
+      parts.push(ageLine(text, old || anyError));
     }
     renderPanel(user, heading, parts);
   }
@@ -383,7 +384,11 @@ function renderRow(
   nowMs: number,
   onTripTap: (trip: TripRef) => void,
 ): HTMLElement {
-  const li = el("li", r.cancelled ? "row cancelled" : "row");
+  const li = el("li", "");
+  // A departure you can open is a real button inside the list item, so it stays a list item for
+  // screen readers; extra trips come without a usable trip ID, so there is no card to open.
+  const row = el(r.extra ? "div" : "button", r.cancelled ? "row cancelled" : "row");
+  li.append(row);
 
   const badge = el("span", "line", r.line);
   const color = rowColor(r);
@@ -407,22 +412,13 @@ function renderRow(
   const state = delayState(r.delaySec, r.realTime, r.cancelled);
   when.append(el("small", `state ${state.level}`, state.text));
 
-  li.append(badge, dest, when);
+  row.append(badge, dest, when);
 
-  // Extra trips come without a usable trip ID, so there is no card to open.
   if (!r.extra) {
-    li.classList.add("tappable");
-    li.tabIndex = 0;
-    focusKey(li, `${r.tripId}|${r.stopName}`); // near me: one trip can pass two of the shown stops
-    li.setAttribute("role", "button");
-    const tap = () => onTripTap({ tripId: r.tripId, line: r.line, color, focus: [r.lon, r.lat] });
-    li.addEventListener("click", tap);
-    li.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        tap();
-      }
-    });
+    row.classList.add("tappable");
+    (row as HTMLButtonElement).type = "button";
+    focusKey(row, `${r.tripId}|${r.stopName}`); // near me: one trip can pass two of the shown stops
+    row.addEventListener("click", () => onTripTap({ tripId: r.tripId, line: r.line, color, focus: [r.lon, r.lat] }));
   }
   return li;
 }

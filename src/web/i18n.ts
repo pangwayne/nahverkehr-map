@@ -20,8 +20,11 @@ const de = {
   idle: "Haltestelle suchen oder auf der Karte antippen",
   loading: "lädt...",
   unavailable: "gerade nicht verfügbar",
-  updated: (s: number) => `vor ${s} s aktualisiert`,
+  updated: (s: number) => `vor ${s} s abgerufen`,
   dataOld: "Daten sind alt",
+  refreshFailed: "Aktualisierung fehlgeschlagen",
+  mapFailed:
+    "Die Karte kann in diesem Browser nicht starten (WebGL ist aus oder fehlt). Ohne Karte funktioniert die App leider nicht.",
 
   nearYou: "In deiner Nähe",
   needsHttps: "Der Standort braucht eine sichere Verbindung (die https://-Seite oder localhost).",
@@ -99,8 +102,10 @@ const en: typeof de = {
   idle: "Search for a stop or tap one on the map",
   loading: "loading...",
   unavailable: "unavailable right now",
-  updated: (s) => `updated ${s} s ago`,
+  updated: (s) => `fetched ${s} s ago`,
   dataOld: "data is old",
+  refreshFailed: "refresh failed",
+  mapFailed: "The map cannot start in this browser (WebGL is off or missing). The app does not work without it, sorry.",
 
   nearYou: "Near you",
   needsHttps: "Location needs a secure connection (the https:// site, or localhost).",

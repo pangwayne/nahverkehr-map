@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <meta name="theme-color" content="#0b0e18" />
     <title>Nahverkehr Rheinland: Abfahrten live</title>
     <link rel="stylesheet" href="/src/web/style.css" />
@@ -56,16 +57,17 @@
         </button>
       </div>
     </header>
-    <div id="map-wrap">
-      <main id="map"></main>
-      <section id="board" hidden>
+    <!-- The main landmark holds the map and the departure board / trip card, so screen readers find both. -->
+    <main id="map-wrap">
+      <div id="map"></div>
+      <section id="board" aria-labelledby="board-title" hidden>
         <div class="board-head">
-          <h2 id="board-title" aria-live="polite"></h2>
+          <h2 id="board-title" tabindex="-1" aria-live="polite"></h2>
           <button id="board-close" type="button" data-t-label="close" aria-label="Schließen">×</button>
         </div>
         <div id="board-body"></div>
       </section>
-    </div>
+    </main>
     <footer class="site-footer">
       <span data-t="footerData">Daten</span>:
       <a href="https://transitous.org/sources/" target="_blank" rel="noopener" data-t="footerSources">Transitous-Quellen</a>

@@ -93,22 +93,24 @@ body {
   box-shadow: 0 0 0 1px color-mix(in srgb, CanvasText 20%, transparent);
 }
 
-/* Phones: a little tighter, so photo, name, imprint and pill still fit in one row. */
+/* Phones: photo, name and language pill in the first row, the links (app, imprint) in a second. */
 @media (max-width: 600px) {
   .site-header {
-    flex-wrap: nowrap;
-    gap: 12px;
+    gap: 8px 12px;
   }
 
-  /* On very small screens the name wraps onto two lines instead of pushing the pill down. */
   .logo {
-    min-width: 0;
     font-size: 16px;
   }
 
-  .site-header nav,
   .lang-toggle {
-    flex: none;
+    margin-left: auto;
+  }
+
+  .site-header nav {
+    order: 1;
+    flex-basis: 100%;
+    margin-left: 0;
   }
 }
 

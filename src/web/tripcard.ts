@@ -236,7 +236,7 @@ export function startTripCard(map: maplibregl.Map, onStopTap: (stop: StopRef) =>
     const list = el("ol", "trip-stops");
     list.style.setProperty("--line", routeColor(route));
     for (let i = firstShown; i < route.stops.length; i++) {
-      list.append(renderStop(route.stops[i]!, i, progress, route));
+      list.append(renderStop(route.stops[i]!, i, progress, route, onStopTap));
     }
     parts.push(list);
 
@@ -244,7 +244,7 @@ export function startTripCard(map: maplibregl.Map, onStopTap: (stop: StopRef) =>
     const foot = el("div", "trip-foot");
     if (Number.isFinite(age)) {
       const old = age > STALE_AFTER_S;
-      foot.append(ageLine(ageText(age, old), old));
+      foot.append(ageLine(ageText(age, old, error !== null), old || error !== null));
     }
     const zoomBtn = focusKey(el("button", "link-button", t().wholeRoute), "whole-route");
     const shownRoute = route;
@@ -305,7 +305,14 @@ function nextText(route: TripRoute, p: TripProgress, now: number): string {
   return t().nextStop(`${name}${platform}`, formatCountdown(reachMs(s)!, now));
 }
 
-function renderStop(s: RouteStop, i: number, p: TripProgress, route: TripRoute): HTMLElement {
+// The stop's name is a button that opens its departure board, like its dot on the map.
+function renderStop(
+  s: RouteStop,
+  i: number,
+  p: TripProgress,
+  route: TripRoute,
+  onStopTap: (stop: StopRef) => void,
+): HTMLElement {
   const passed = p.next === null || i < p.next;
   const classes = ["trip-stop", passed ? "passed" : "", i === p.next ? "next" : "", s.cancelled ? "cancelled" : ""];
   const li = el("li", classes.filter(Boolean).join(" "));
@@ -316,9 +323,11 @@ function renderStop(s: RouteStop, i: number, p: TripProgress, route: TripRoute):
   li.append(el("span", "time", leave === null ? "" : formatClock(leave)));
   li.append(el("span", "stop-dot")); // on the timeline: grey when passed, ringed for the next stop
 
-  const name = el("span", "name", shortName(s.name));
+  const name = focusKey(el("button", "name", shortName(s.name)), `stop-${i}`);
+  (name as HTMLButtonElement).type = "button";
   const platform = platformLabel(s.stopId, route.mode);
   if (platform) name.append(el("small", "", ` ${platform}`));
+  name.addEventListener("click", () => onStopTap({ stopId: s.stopId, name: s.name, lon: s.lon, lat: s.lat }));
   li.append(name);
 
   if (route.realTime && !s.cancelled && onTimetable(route, i)) {

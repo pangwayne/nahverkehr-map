@@ -4,7 +4,7 @@
 import type { Board } from "./board";
 import { t, onLangChange } from "./i18n";
 import { shortName } from "./names";
-import { el } from "./panel";
+import { el, focusPanel } from "./panel";
 import { type Station, searchStations } from "./stops";
 
 const MAX_RESULTS = 8;
@@ -93,8 +93,8 @@ export function startSearch(board: Board): void {
   function choose(station: Station): void {
     input.value = "";
     close();
-    input.blur(); // hides the phone keyboard, so the board is visible
     board.showStation(station, true);
+    focusPanel(); // keyboard users land on the board; on phones it also hides the keyboard
   }
 
   function open(): void {
