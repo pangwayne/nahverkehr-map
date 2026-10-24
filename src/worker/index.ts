@@ -9,10 +9,12 @@ import {
   USER_AGENT,
   bucketStart,
   buildDeparturesUrl,
+  buildPlanUrl,
   buildStopsUrl,
   buildTripUrl,
   isValidStopId,
   isValidTripId,
+  parsePlanQuery,
 } from "./transitous";
 
 // If Transitous fails, serve the last good copy for up to this long (marked as stale).
@@ -26,6 +28,11 @@ const STOPS_BROWSER_MAX_AGE_S = 6 * 3600;
 
 const LIVE_BROWSER_MAX_AGE_S = 10;
 
+// A route search is shared for its minute (the browser sends whole minutes). Its last good copy is kept
+// only briefly: an old plan lists trains that have already left.
+const PLAN_FRESH_S = 60;
+const PLAN_STALE_LIMIT_S = 120;
+
 // A failed answer is remembered too, so repeated requests for it do not all reach Transitous:
 // an unknown stop or trip for a while, an outage only briefly (it may be over soon).
 const NOT_FOUND_CACHE_S = 600;
@@ -33,7 +40,8 @@ const OUTAGE_CACHE_S = 15;
 
 // Upstream requests per visitor: generous for a person tapping around (a board can fetch up to 13
 // at once), low enough to stop a script from making up IDs to get past the shared cache.
-// The limit itself lives in wrangler.jsonc (API_LIMIT).
+// The limits live in wrangler.jsonc: API_LIMIT for stops, departures and trips, PLAN_LIMIT (lower) for
+// route searches, which cost Transitous the most and rarely come from the shared cache.
 const RATE_LIMITED_RETRY_S = 60;
 
 // Sent with every page and API answer.
@@ -73,17 +81,18 @@ export default {
         Response.json({ error: "method not allowed" }, { status: 405, headers: { Allow: "GET, HEAD" } }),
       );
     }
-    return withSecurityHeaders(await api(url, upstreamAllowed(request, env), ctx));
+    const limiter = url.pathname === "/api/plan" ? env.PLAN_LIMIT : env.API_LIMIT;
+    return withSecurityHeaders(await api(url, upstreamAllowed(request, limiter), ctx));
   },
 } satisfies ExportedHandler<Env>;
 
 // Asks the rate limiter, only when an answer has to come from Transitous. The visitor's IP is the
 // key (there is nothing else to tell visitors apart); the count lasts one minute and is not logged.
-function upstreamAllowed(request: Request, env: Env): () => Promise<boolean> {
+function upstreamAllowed(request: Request, limiter: RateLimit | undefined): () => Promise<boolean> {
   return async () => {
-    if (!env.API_LIMIT) return true; // tests and `npm run dev` without the binding
+    if (!limiter) return true; // tests and `npm run dev` without the binding
     const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
-    const { success } = await env.API_LIMIT.limit({ key: ip });
+    const { success } = await limiter.limit({ key: ip });
     return success;
   };
 }
@@ -140,6 +149,23 @@ async function api(url: URL, allowed: () => Promise<boolean>, ctx: ExecutionCont
       freshS: TRIP_BUCKET_MS / 1000,
       staleS: STALE_LIMIT_S,
       browserMaxAgeS: LIVE_BROWSER_MAX_AGE_S,
+    });
+  }
+
+  if (url.pathname === "/api/plan") {
+    const q = parsePlanQuery(url.searchParams, Date.now());
+    if (!q) return Response.json({ error: "invalid route search" }, { status: 400 });
+    // Built from the checked fields only, so extra or reordered parameters share one cache entry.
+    const key = new URLSearchParams({ from: q.from, to: q.to, time: q.time, arriveBy: q.arriveBy ? "1" : "0" });
+    if (q.cursor) key.set("cursor", q.cursor);
+    return cachedProxy(ctx, allowed, {
+      upstreamUrl: buildPlanUrl(q),
+      bucketKey: `${base}?${key}&fresh`,
+      latestKey: `${base}?${key}&latest`,
+      failKey: `${base}?${key}&failed`,
+      freshS: PLAN_FRESH_S,
+      staleS: PLAN_STALE_LIMIT_S,
+      browserMaxAgeS: PLAN_FRESH_S,
     });
   }
 

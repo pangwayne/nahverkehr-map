@@ -58,3 +58,60 @@ export function buildDeparturesUrl(stopId: string): string {
   const params = new URLSearchParams({ stopId, n: String(DEPARTURES_COUNT) });
   return `${TRANSITOUS_BASE}/api/v6/stoptimes?${params.toString()}`;
 }
+
+// Route search. The browser chooses only these fields; everything else sent to Transitous is fixed here.
+export interface PlanQuery {
+  from: string; // stop ID
+  to: string; // stop ID
+  time: string; // "2026-10-24T17:00Z", UTC, whole minutes
+  arriveBy: boolean; // true: arrive by `time`; false: leave at `time`
+  cursor: string | null; // "LATER|1792863900" from an earlier answer, for earlier/later options
+}
+
+// Same modes as the boards: no IC/ICE, coaches or planes (an ICE showed up without this).
+export const PLAN_MODES = "TRAM,SUBWAY,BUS,SUBURBAN,REGIONAL_RAIL,REGIONAL_FAST_RAIL";
+// numItineraries alone is only a minimum (a "later" page once brought 12); maxItineraries caps it.
+export const PLAN_OPTIONS = 5;
+export const PLAN_MAX_TRANSFERS = 4;
+// How far the search time may lie from now: a little in the past (a page left open), a week ahead.
+export const PLAN_PAST_MS = 2 * 3600_000;
+export const PLAN_AHEAD_MS = 7 * 86_400_000;
+
+const PLAN_TIME_PATTERN = /^20\d{2}-[01]\d-[0-3]\dT[0-2]\d:[0-5]\dZ$/;
+const PLAN_CURSOR_PATTERN = /^(EARLIER|LATER)\|\d{10}$/;
+
+// The checked search, or null if any field is missing, malformed, a date that does not exist,
+// outside the allowed time window, or from and to are the same stop.
+export function parsePlanQuery(params: URLSearchParams, nowMs: number): PlanQuery | null {
+  const from = params.get("from") ?? "";
+  const to = params.get("to") ?? "";
+  const time = params.get("time") ?? "";
+  const arriveBy = params.get("arriveBy") ?? "0";
+  const cursor = params.get("cursor");
+  if (!isValidStopId(from) || !isValidStopId(to) || from === to) return null;
+  if (!PLAN_TIME_PATTERN.test(time)) return null;
+  const ms = Date.parse(time);
+  // "2026-02-30T10:00Z" parses as 2 March: the round trip catches dates that do not exist.
+  if (Number.isNaN(ms) || new Date(ms).toISOString().slice(0, 16) + "Z" !== time) return null;
+  if (ms < nowMs - PLAN_PAST_MS || ms > nowMs + PLAN_AHEAD_MS) return null;
+  if (arriveBy !== "0" && arriveBy !== "1") return null;
+  if (cursor !== null && !PLAN_CURSOR_PATTERN.test(cursor)) return null;
+  return { from, to, time, arriveBy: arriveBy === "1", cursor };
+}
+
+// A page cursor, when given, wins over the time on Transitous' side.
+export function buildPlanUrl(q: PlanQuery): string {
+  const params = new URLSearchParams({
+    fromPlace: q.from,
+    toPlace: q.to,
+    time: q.time,
+    arriveBy: String(q.arriveBy),
+    transitModes: PLAN_MODES,
+    numItineraries: String(PLAN_OPTIONS),
+    maxItineraries: String(PLAN_OPTIONS),
+    maxTransfers: String(PLAN_MAX_TRANSFERS),
+    detailedTransfers: "false",
+  });
+  if (q.cursor) params.set("pageCursor", q.cursor);
+  return `${TRANSITOUS_BASE}/api/v6/plan?${params.toString()}`;
+}
