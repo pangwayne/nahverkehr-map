@@ -16,6 +16,13 @@ const bodyEl = document.querySelector<HTMLElement>("#board-body")!;
 const closeBtn = document.querySelector<HTMLButtonElement>("#board-close")!;
 
 let owner: PanelUser | null = null;
+// What had keyboard focus before the panel opened (search box, map, a button), to give it back on close.
+let opener: HTMLElement | null = null;
+// Focus goes back only for keyboard users: on a phone, focusing the search box again would pop up
+// the on-screen keyboard after every close.
+let usingKeyboard = false;
+document.addEventListener("keydown", () => (usingKeyboard = true), true);
+document.addEventListener("pointerdown", () => (usingKeyboard = false), true);
 
 closeBtn.addEventListener("click", () => closePanel());
 document.addEventListener("keydown", (e) => {
@@ -27,6 +34,10 @@ export function openPanel(user: PanelUser): void {
     const previous = owner;
     owner = null;
     previous.onClose();
+  }
+  if (panelEl.hidden) {
+    const active = document.activeElement;
+    opener = active instanceof HTMLElement && active !== document.body ? active : null;
   }
   owner = user;
   panelEl.hidden = false;
@@ -81,7 +92,13 @@ export function closePanel(user?: PanelUser): void {
   if (user && owner !== user) return;
   const previous = owner;
   owner = null;
+  // Focus inside the panel would be lost with it (the next Tab would start at the top of the page).
+  const active = document.activeElement;
+  const hadFocus = active === document.body || (active instanceof Node && panelEl.contains(active));
   panelEl.hidden = true;
+  const back = usingKeyboard && hadFocus && opener?.isConnected && !opener.closest("[hidden]") ? opener : null;
+  back?.focus({ preventScroll: true });
+  opener = null;
   previous?.onClose();
 }
 

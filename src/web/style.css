@@ -504,7 +504,11 @@ html[lang="en"] .flag-en {
 .row.tappable:hover,
 .row.tappable:focus-visible {
   background: var(--hover);
-  outline: none;
+}
+
+/* Same ring as every other control, drawn inside so the list does not clip it. */
+.row.tappable:focus-visible {
+  outline-offset: -3px;
 }
 
 .row .dest {
@@ -849,14 +853,17 @@ html[lang="en"] .flag-en {
 
 /* Always-visible attribution (Transitous asks for a visible link, the map's own credits can collapse). */
 .site-footer {
-  padding: 6px 16px;
+  padding: 2px 16px;
   background: var(--head-bg);
   color: var(--head-soft);
   border-top: 1px solid var(--head-border);
   font-size: 12px;
+  line-height: 24px;
 }
 
+/* 24 px tall links, so a thumb can hit one without catching the line above or below (WCAG 2.5.8). */
 .site-footer a {
+  display: inline-block;
   color: inherit;
 }
 

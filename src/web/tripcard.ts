@@ -6,7 +6,7 @@ import type { FeatureCollection, Point } from "geojson";
 import type * as maplibregl from "maplibre-gl";
 import { fetchTrip } from "./api";
 import type { StopRef } from "./board";
-import { delayLevel, formatClock, formatCountdown, formatDelay, platformLabel } from "./departures";
+import { badgeTextColor, delayLevel, formatClock, formatCountdown, formatDelay, platformLabel } from "./departures";
 import type { LonLat } from "./geo";
 import { type PanelUser, ageLine, el, focusKey, offsetClearOfPanel, openPanel, ownsPanel, renderPanel } from "./panel";
 import { t, onLangChange } from "./i18n";
@@ -269,7 +269,7 @@ function routeColor(route: TripRoute): string {
 function lineBadge(line: string, color: string, textColor: string | null): HTMLElement {
   const badge = el("span", "line", line);
   badge.style.backgroundColor = color;
-  badge.style.color = textColor ?? "#ffffff";
+  badge.style.color = badgeTextColor(color, textColor);
   return badge;
 }
 

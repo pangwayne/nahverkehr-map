@@ -8,6 +8,7 @@ import * as maplibregl from "maplibre-gl";
 import { fetchDepartures, fetchStops } from "./api";
 import {
   type DepartureRow,
+  badgeTextColor,
   delayState,
   formatCountdown,
   mergeRows,
@@ -393,7 +394,7 @@ function renderRow(
   const badge = el("span", "line", r.line);
   const color = rowColor(r);
   badge.style.backgroundColor = color;
-  badge.style.color = r.textColor ?? "#ffffff";
+  badge.style.color = badgeTextColor(color, r.textColor);
 
   // Destination, then what it is and where: "Stadtbahn · Colmantstr./Hbf", "Zug · Gleis 2".
   const dest = el("span", "dest");

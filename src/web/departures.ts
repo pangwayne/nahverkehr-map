@@ -137,6 +137,27 @@ export function upcoming(rows: DepartureRow[], nowMs: number, limit: number): De
 export const rowColor = (r: DepartureRow): string =>
   r.color ?? (r.extra ? "#757575" : r.mode === "BUS" ? "#4a5a6a" : "#1565c0");
 
+// WCAG relative luminance of "#rrggbb".
+function luminance(hex: string): number {
+  const [r, g, b] = [1, 3, 5].map((i) => {
+    const v = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+}
+
+export function contrastRatio(a: string, b: string): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi! + 0.05) / (lo! + 0.05);
+}
+
+// Text colour for a line badge: the operator's own if it is readable (WCAG 4.5:1 for small text),
+// else black or white, whichever stands out more on the badge colour.
+export function badgeTextColor(background: string, given: string | null): string {
+  if (given && contrastRatio(given, background) >= 4.5) return given;
+  return contrastRatio("#000000", background) >= contrastRatio("#ffffff", background) ? "#000000" : "#ffffff";
+}
+
 // One row per line, in board order (both directions of a line run along the same streets).
 // Extra trips have no trip to ask for; a cancelled row is skipped, another row of that line may come.
 export function distinctLines(rows: DepartureRow[]): DepartureRow[] {

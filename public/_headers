@@ -1,0 +1,5 @@
+# Built JS, CSS and fonts carry a content hash in their name, so a copy can be kept for a year:
+# a new build gets new names. These files are served without the Worker (wrangler.jsonc).
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+  X-Content-Type-Options: nosniff
