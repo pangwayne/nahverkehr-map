@@ -8,7 +8,8 @@ import { fetchTrip } from "./api";
 import type { StopRef } from "./board";
 import { badgeTextColor, delayLevel, formatClock, formatCountdown, formatDelay, platformLabel } from "./departures";
 import type { LonLat } from "./geo";
-import { type PanelUser, ageLine, el, focusKey, offsetClearOfPanel, openPanel, ownsPanel, renderPanel } from "./panel";
+import { fitPoints } from "./mapfit";
+import { type PanelUser, ageLine, el, focusKey, openPanel, ownsPanel, renderPanel } from "./panel";
 import { t, onLangChange } from "./i18n";
 import { shortName } from "./names";
 import { ageText, resetStatus, setStatus } from "./status";
@@ -39,6 +40,7 @@ export interface TripRef {
   line: string;
   color: string;
   focus: LonLat | null;
+  back?: { label: () => string; run: () => void }; // opened from somewhere else (a route's details): the way back
 }
 
 export interface TripCard {
@@ -188,6 +190,13 @@ export function startTripCard(map: maplibregl.Map, onStopTap: (stop: StopRef) =>
       el("span", "", route ? shortName(route.headsign) : "…"),
     ];
     const parts: HTMLElement[] = [];
+    if (tapped.back) {
+      const back = tapped.back;
+      const btn = focusKey(el("button", "link-button route-back", `← ${back.label()}`), "back");
+      (btn as HTMLButtonElement).type = "button";
+      btn.addEventListener("click", () => back.run());
+      parts.push(btn);
+    }
 
     if (!route || !progress) {
       parts.push(
@@ -347,28 +356,6 @@ function onTimetable(route: TripRoute, i: number): boolean {
 
 function fitRoute(map: maplibregl.Map, route: TripRoute): void {
   if (route.path.length >= 2) fitPoints(map, route.path);
-}
-
-// Show all points, kept clear of the panel (offset is up on phones, right on wide screens).
-function fitPoints(map: maplibregl.Map, points: LonLat[], maxZoom?: number): void {
-  let [minLon, minLat] = points[0]!;
-  let [maxLon, maxLat] = points[0]!;
-  for (const [lon, lat] of points) {
-    minLon = Math.min(minLon, lon);
-    maxLon = Math.max(maxLon, lon);
-    minLat = Math.min(minLat, lat);
-    maxLat = Math.max(maxLat, lat);
-  }
-  const [offsetX, offsetY] = offsetClearOfPanel();
-  const padding = { top: 40, right: 40, left: 40 + offsetX * 2, bottom: 40 - offsetY * 2 };
-  map.fitBounds(
-    [
-      [minLon, minLat],
-      [maxLon, maxLat],
-    ],
-    // Leave maxZoom out when not given: `maxZoom: undefined` replaces MapLibre's default and the zoom becomes NaN.
-    maxZoom === undefined ? { padding } : { padding, maxZoom },
-  );
 }
 
 // Ring color shows punctuality (section 5.3 of the guidelines); grey when unknown or old.

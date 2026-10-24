@@ -1135,12 +1135,32 @@ html[lang="en"] .flag-en {
   padding: 0;
 }
 
+/* A connection: a button (opens its details) laid out like a row, with the standard focus ring inside. */
 .route-option {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 0;
+  width: calc(100% + 16px);
+  margin: 0 -8px;
+  padding: 10px 8px;
+  border: 0;
   border-bottom: 1px solid var(--border);
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.route-option:hover,
+.route-option:focus-visible {
+  background: var(--hover);
+}
+
+.route-option:focus-visible {
+  outline-offset: -3px;
 }
 
 .route-times {
@@ -1187,6 +1207,7 @@ html[lang="en"] .flag-en {
 }
 
 .route-info {
+  display: block;
   margin: 0;
   font-size: 12px;
   color: var(--ink-soft);
@@ -1223,5 +1244,102 @@ html[lang="en"] .flag-en {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+/* A connection's details: back link, summary, then the legs as a timeline (rides in their line's colour). */
+.route-back {
+  margin: 0 0 4px;
+}
+
+.route-summary {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.journey-legs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.journey-leg {
+  position: relative;
+}
+
+.journey-leg.walk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 6px 52px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.journey-stop {
+  display: grid;
+  grid-template-columns: 44px 14px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.journey-stop .route-clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.15;
+}
+
+.journey-stop-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--line, var(--ink-soft));
+  background: var(--surface);
+}
+
+.journey-stop-name {
+  font-weight: 600;
+}
+
+.journey-stop-name small {
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+
+/* The ride between its two stops: a thick line in the line's colour down the timeline. */
+.journey-ride {
+  margin: 0 0 0 57px; /* time column + gap + half the dot, minus half the line */
+  padding: 4px 0 4px 13px;
+  border-left: 4px solid var(--line, var(--ink-soft));
+}
+
+.journey-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 2px;
+  font-size: 14px;
+}
+
+.journey-headsign {
+  font-weight: 500;
+}
+
+.journey-seated {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.journey-leg.cancelled .journey-stop,
+.journey-leg.cancelled .journey-line {
+  text-decoration: line-through;
+  opacity: 0.5;
 }
 

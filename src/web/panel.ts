@@ -108,11 +108,19 @@ export function offsetClearOfPanel(): [number, number] {
   return window.innerWidth < NARROW_PX ? [0, -panelEl.offsetHeight / 2] : [panelEl.offsetWidth / 2, 0];
 }
 
-// Tapping empty map (no vehicle, no stop) closes whatever is open.
+// A finger is not a pixel: a tap this close to a thin line or a dot still counts as on it.
+const TAP_SLOP_PX = 8;
+
+// Tapping empty map (no vehicle, no stop, no shown route) closes whatever is open.
 export function closeOnEmptyMapTap(map: maplibregl.Map, layers: string[]): void {
   map.on("click", (e) => {
     const present = layers.filter((id) => map.getLayer(id));
-    if (present.length && map.queryRenderedFeatures(e.point, { layers: present }).length === 0) closePanel();
+    const { x, y } = e.point;
+    const box: [maplibregl.PointLike, maplibregl.PointLike] = [
+      [x - TAP_SLOP_PX, y - TAP_SLOP_PX],
+      [x + TAP_SLOP_PX, y + TAP_SLOP_PX],
+    ];
+    if (present.length && map.queryRenderedFeatures(box, { layers: present }).length === 0) closePanel();
   });
 }
 

@@ -3,31 +3,39 @@
 // Light on Transitous: a search runs only when the button is pressed, one at a time, never by itself.
 // Only stop IDs and the time leave the phone; "My location" picks the nearest stop on the phone.
 
+import type * as maplibregl from "maplibre-gl";
 import { type PlanRequest, PlanError, fetchPlan } from "./api";
 import { berlinDateTime, fromBerlin, planTime } from "./berlintime";
 import type { Board } from "./board";
 import { badgeTextColor, delayState, formatClock } from "./departures";
 import { t, onLangChange } from "./i18n";
+import { startJourneyMap } from "./journeymap";
+import { fitPoints } from "./mapfit";
 import { shortName } from "./names";
 import { type PanelUser, ageLine, el, focusKey, focusPanel, openPanel, ownsPanel, renderPanel } from "./panel";
 import {
   type Journey,
+  type JourneyLeg,
   type Plan,
   type PlanFailure,
+  type RideLeg,
   durationText,
   firstRide,
+  journeyPath,
   parsePlan,
   planFailure,
 } from "./plan";
 import { ageText, resetStatus, setStatus, setStatusNote, setStatusTitle } from "./status";
 import { attachStopSearch } from "./stopsearch";
 import { type Station, nearestStations } from "./stops";
+import type { TripRef } from "./tripcard";
 import { PLAN_AHEAD_MS, PLAN_PAST_MS } from "../worker/transitous";
 
 const FETCH_TIMEOUT_MS = 15_000;
 const TICK_MS = 10_000; // the age line counts up; nothing is fetched again by itself
 const STALE_AFTER_S = 120;
 const LOCATION_RADIUS_M = 2000;
+const FIT_MAX_ZOOM = 16; // a short trip would otherwise zoom in so far that the map shows nothing around it
 
 export interface RoutePanel {
   open(ends?: { from?: Station; to?: Station }): void;
@@ -44,8 +52,12 @@ type Outcome =
   | { kind: "plan"; plan: Plan; name: string; fetchedAtMs: number; refreshFailed: boolean }
   | { kind: "failed"; failure: PlanFailure; retryAfterS: number | null };
 
-export function startRoute(board: Board): RoutePanel {
+// `openTrip`: a ride in a connection's details was tapped (opens its trip card, which can come back here).
+export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: TripRef) => void): RoutePanel {
   const user: PanelUser = { onClose };
+  const journeyMap = startJourneyMap(map);
+  map.on("load", () => journeyMap.addLayers());
+  let detail: Journey | null = null; // the connection whose details are open (kept while its trip card is open)
   let built: ReturnType<typeof buildForm> | null = null;
   let outcome: Outcome = { kind: "none" };
   let lastRequest: PlanRequest | null = null;
@@ -58,8 +70,8 @@ export function startRoute(board: Board): RoutePanel {
     if (!built) return;
     applyTexts();
     if (!ownsPanel(user)) return;
-    renderPanel(user, t().routeTitle, [built.form, built.results]);
-    render();
+    if (detail) showDetails(detail, false);
+    else showList();
   });
   setInterval(() => {
     if (ownsPanel(user) && outcome.kind === "plan") renderStatus();
@@ -71,9 +83,42 @@ export function startRoute(board: Board): RoutePanel {
     if (ends.to) pick(built.to, ends.to);
     if (built.isNow) fillNow();
     openPanel(user);
-    renderPanel(user, t().routeTitle, [built.form, built.results]);
     applyTexts();
+    showList();
+    focusPanel();
+  }
+
+  // The form and the connections. `focusOn`: the option to give focus back to (coming back from details).
+  function showList(focusOn?: string): void {
+    const b = built!;
+    detail = null;
+    journeyMap.show(null);
+    renderPanel(user, t().routeTitle, [b.form, b.results]);
     render();
+    if (focusOn) {
+      refocus(b.body, focusOn);
+      document.activeElement?.scrollIntoView({ block: "nearest" });
+    }
+  }
+
+  // One connection in full, and drawn on the map. `fit`: also move the map to show all of it.
+  function showDetails(j: Journey, fit = true): void {
+    detail = j;
+    const title = outcome.kind === "plan" ? outcome.name : routeName();
+    renderPanel(user, title, detailNodes(j));
+    journeyMap.show(j);
+    if (fit) {
+      document.querySelector("#board")!.scrollTop = 0; // the list may have been scrolled down
+      fitPoints(map, journeyPath(j), FIT_MAX_ZOOM);
+    }
+    renderStatus();
+  }
+
+  // Back from a ride's trip card.
+  function backToJourney(): void {
+    if (!detail) return;
+    openPanel(user);
+    showDetails(detail);
     focusPanel();
   }
 
@@ -81,7 +126,71 @@ export function startRoute(board: Board): RoutePanel {
     controller?.abort();
     controller = null;
     if (outcome.kind === "searching") outcome = { kind: "none" };
+    journeyMap.show(null);
     resetStatus();
+  }
+
+  function detailNodes(j: Journey): HTMLElement[] {
+    const back = focusKey(el("button", "link-button route-back", `← ${t().routeBack}`) as HTMLButtonElement, "back");
+    back.type = "button";
+    back.addEventListener("click", () => showList(optionKey(j)));
+
+    const summary = el("p", "route-summary");
+    summary.append(clock(j.depMs, j.schedDepMs), " → ", clock(j.arrMs, j.schedArrMs));
+    const facts = [durationText(j.arrMs - j.depMs), j.transfers ? t().routeTransfers(j.transfers) : t().routeDirect];
+    summary.append(` · ${facts.join(" · ")}`);
+
+    const list = el("ol", "journey-legs");
+    j.legs.forEach((leg, i) => list.append(legItem(leg, i === j.legs.length - 1, j.cancelled)));
+
+    const foot = el("div", "route-foot");
+    foot.append(el("span", "route-age"));
+    const whole = focusKey(el("button", "link-button", t().wholeRoute) as HTMLButtonElement, "whole");
+    whole.type = "button";
+    whole.addEventListener("click", () => fitPoints(map, journeyPath(j), FIT_MAX_ZOOM));
+    foot.append(whole);
+    return [back, summary, list, foot];
+  }
+
+  function legItem(leg: JourneyLeg, last: boolean, cancelled: boolean): HTMLElement {
+    if (leg.kind === "walk") {
+      const li = el("li", "journey-leg walk");
+      const icon = el("span", "route-walk");
+      icon.insertAdjacentHTML("afterbegin", WALK_ICON);
+      li.append(icon, el("span", "", t().routeWalkMin(leg.minutes)));
+      if (last) li.append(el("span", "journey-to", t().routeWalkTo(shortName(leg.to.name))));
+      return li;
+    }
+    const li = el("li", leg.cancelled || cancelled ? "journey-leg ride cancelled" : "journey-leg ride");
+    li.style.setProperty("--line", rideColor(leg));
+    li.append(legStop(leg.from.ms, leg.from.schedMs, leg.from.name, leg.from.platform));
+
+    const mid = el("div", "journey-ride");
+    if (leg.staySeated) mid.append(el("p", "journey-seated", t().routeStaySeated(leg.line)));
+    const head = el("p", "journey-line");
+    head.append(lineBadge(leg), el("span", "journey-headsign", shortName(leg.headsign)));
+    mid.append(head);
+    const facts = el("p", "route-info", t().routeStops(leg.stopsBetween + 1));
+    const state = delayState((leg.from.ms - leg.from.schedMs) / 1000, leg.realTime, leg.cancelled);
+    facts.append(" · ", el("span", `state ${state.level}`, state.text));
+    mid.append(facts);
+    if (leg.tripId) {
+      const tripId = leg.tripId;
+      const open = focusKey(el("button", "link-button", t().routeShowRide) as HTMLButtonElement, `ride-${tripId}`);
+      open.type = "button";
+      open.addEventListener("click", () =>
+        openTrip({
+          tripId,
+          line: leg.line,
+          color: rideColor(leg),
+          focus: [leg.from.lon, leg.from.lat],
+          back: { label: () => t().routeBackToJourney, run: backToJourney },
+        }),
+      );
+      mid.append(open);
+    }
+    li.append(mid, legStop(leg.to.ms, leg.to.schedMs, leg.to.name, leg.to.platform));
+    return li;
   }
 
   // The form is built once and kept, so typed text, picks and focus survive redraws and language switches.
@@ -393,8 +502,9 @@ export function startRoute(board: Board): RoutePanel {
       nodes.push(el("p", "board-note", t().routeNone));
     } else {
       const list = el("ul", "route-options");
-      if (plan.walk) list.append(walkOption(plan.walk));
-      for (const j of plan.journeys) list.append(journeyOption(j));
+      const walk = plan.walk;
+      if (walk) list.append(walkOption(walk, () => showDetails(walk)));
+      for (const j of plan.journeys) list.append(journeyOption(j, () => showDetails(j)));
       nodes.push(list);
     }
 
@@ -420,15 +530,14 @@ export function startRoute(board: Board): RoutePanel {
     return btn;
   }
 
-  // Status line and the age line under the connections (fresh: green; old or not refreshed: red).
+  // Status line and the age line under the connections or details (fresh: green; old or not refreshed: red).
   function renderStatus(): void {
-    const b = built!;
     const title = outcome.kind === "plan" ? outcome.name : routeName();
     if (outcome.kind === "plan") {
       const ageS = Math.max(0, (Date.now() - outcome.fetchedAtMs) / 1000);
       const old = ageS > STALE_AFTER_S;
       setStatus(title, ageS, outcome.refreshFailed);
-      const slot = b.body.querySelector(".route-age");
+      const slot = document.querySelector("#board-body .route-age");
       slot?.replaceChildren(ageLine(ageText(ageS, old, outcome.refreshFailed), old || outcome.refreshFailed));
     } else if (outcome.kind === "searching") {
       setStatus(title, null, false);
@@ -492,53 +601,83 @@ function failureText(failure: PlanFailure, retryAfterS: number | null): string {
   }
 }
 
-// One connection: times (live, planned struck through when different), duration, the chain of lines and
-// walks, then where it starts, the changes and the live state of the first ride.
-function journeyOption(j: Journey): HTMLElement {
-  const li = el("li", j.cancelled ? "route-option cancelled" : "route-option");
-  const top = el("div", "route-times");
+const optionKey = (j: Journey) => `j-${j.key}`;
+
+function rideColor(leg: RideLeg): string {
+  return leg.color ?? (leg.mode === "BUS" ? "#4a5a6a" : "#1565c0");
+}
+
+function lineBadge(leg: RideLeg): HTMLElement {
+  const color = rideColor(leg);
+  const badge = el("span", "line", leg.line);
+  badge.style.backgroundColor = color;
+  badge.style.color = badgeTextColor(color, leg.textColor);
+  return badge;
+}
+
+// A stop in the details: the time (planned struck through when different), its name and platform.
+function legStop(ms: number, schedMs: number, name: string, platform: string | null): HTMLElement {
+  const row = el("div", "journey-stop");
+  row.append(clock(ms, schedMs), el("span", "journey-stop-dot"));
+  const label = el("span", "journey-stop-name", shortName(name));
+  if (platform) label.append(el("small", "", ` ${platform}`));
+  row.append(label);
+  return row;
+}
+
+// One connection, as a button that opens its details: times (live, planned struck through when different),
+// duration, the chain of lines and walks, then where it starts, the changes and the live state of the first
+// ride. Inside a button only spans are allowed; the classes lay them out.
+function journeyOption(j: Journey, onOpen: () => void): HTMLElement {
+  const li = el("li", "");
+  const btn = focusKey(
+    el("button", j.cancelled ? "route-option cancelled" : "route-option") as HTMLButtonElement,
+    optionKey(j),
+  );
+  btn.type = "button";
+  btn.addEventListener("click", onOpen);
+  li.append(btn);
+  const top = el("span", "route-times");
   top.append(clock(j.depMs, j.schedDepMs), el("span", "route-arrow", "→"), clock(j.arrMs, j.schedArrMs));
   top.append(el("span", "route-duration", durationText(j.arrMs - j.depMs)));
-  li.append(top);
+  btn.append(top);
 
-  const chain = el("div", "route-chain");
+  const chain = el("span", "route-chain");
   j.legs.forEach((leg, i) => {
     if (i > 0) chain.append(el("span", "route-sep", "›"));
-    if (leg.kind === "walk") {
-      chain.append(walkChip(leg.minutes));
-    } else {
-      const color = leg.color ?? (leg.mode === "BUS" ? "#4a5a6a" : "#1565c0");
-      const badge = el("span", "line", leg.line);
-      badge.style.backgroundColor = color;
-      badge.style.color = badgeTextColor(color, leg.textColor);
-      chain.append(badge);
-    }
+    chain.append(leg.kind === "walk" ? walkChip(leg.minutes) : lineBadge(leg));
   });
-  li.append(chain);
+  btn.append(chain);
 
   const ride = firstRide(j);
   const details: string[] = [];
   if (ride) details.push(t().routeFromStop([shortName(ride.from.name), ride.from.platform].filter(Boolean).join(" · ")));
   details.push(j.transfers ? t().routeTransfers(j.transfers) : t().routeDirect);
-  const info = el("p", "route-info", details.join(" · "));
+  const info = el("span", "route-info", details.join(" · "));
   if (ride) {
     const state = delayState((ride.from.ms - ride.from.schedMs) / 1000, ride.realTime, j.cancelled);
     info.append(" · ", el("span", `state ${state.level}`, state.text));
   }
-  li.append(info);
+  btn.append(info);
   return li;
 }
 
-function walkOption(j: Journey): HTMLElement {
-  const li = el("li", "route-option walk");
-  const top = el("div", "route-times");
-  top.append(el("b", "", t().routeWalkAll), el("span", "route-duration", durationText(j.arrMs - j.depMs)));
-  li.append(top);
+function walkOption(j: Journey, onOpen: () => void): HTMLElement {
+  const li = el("li", "");
+  const btn = focusKey(el("button", "route-option walk") as HTMLButtonElement, optionKey(j));
+  btn.type = "button";
+  btn.addEventListener("click", onOpen);
+  li.append(btn);
+  // The walk's own minutes (rounded up from its seconds), so the time matches the chip below it.
   const leg = j.legs[0];
+  const minutes = leg?.kind === "walk" ? leg.minutes : Math.round((j.arrMs - j.depMs) / 60_000);
+  const top = el("span", "route-times");
+  top.append(el("b", "", t().routeWalkAll), el("span", "route-duration", durationText(minutes * 60_000)));
+  btn.append(top);
   if (leg?.kind === "walk") {
-    const chain = el("div", "route-chain");
+    const chain = el("span", "route-chain");
     chain.append(walkChip(leg.minutes));
-    li.append(chain);
+    btn.append(chain);
   }
   return li;
 }
