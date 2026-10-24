@@ -143,3 +143,44 @@ export function fetchDepartures(stopId: string, signal?: AbortSignal): Promise<F
 export function fetchTrip(tripId: string, signal?: AbortSignal): Promise<Fetched<Itinerary>> {
   return fetchJson<Itinerary>(`/api/trip?tripId=${encodeURIComponent(tripId)}`, signal);
 }
+
+// What the route panel asks for; the Worker checks every field again (src/worker/transitous.ts).
+export interface PlanRequest {
+  from: string; // stop IDs
+  to: string;
+  time: string; // "2026-10-24T17:00Z"
+  arriveBy: boolean;
+  cursor: string | null; // earlier / later page
+}
+
+// A route search the Worker refused or could not answer. `status` is null when nothing came back at all.
+export class PlanError extends Error {
+  constructor(
+    readonly status: number | null,
+    readonly retryAfterS: number | null,
+  ) {
+    super(`/api/plan failed (${status ?? "no answer"})`);
+  }
+}
+
+export async function fetchPlan(q: PlanRequest, signal?: AbortSignal): Promise<Fetched<PlanResponse>> {
+  const params = new URLSearchParams({ from: q.from, to: q.to, time: q.time, arriveBy: q.arriveBy ? "1" : "0" });
+  if (q.cursor) params.set("cursor", q.cursor);
+  let res: Response;
+  try {
+    res = await fetch(`/api/plan?${params.toString()}`, { signal });
+  } catch (err) {
+    if (signal?.aborted && signal.reason instanceof DOMException && signal.reason.name === "AbortError") throw err;
+    throw new PlanError(null, null); // offline, or the time limit ran out
+  }
+  if (!res.ok) {
+    const retry = Number(res.headers.get("Retry-After"));
+    throw new PlanError(res.status, Number.isFinite(retry) && retry > 0 ? retry : null);
+  }
+  const fetchedHeader = res.headers.get("X-Fetched-At");
+  return {
+    data: (await res.json()) as PlanResponse,
+    fetchedAtMs: fetchedHeader ? Date.parse(fetchedHeader) : Date.now(),
+    cacheState: res.headers.get("X-Cache"),
+  };
+}

@@ -32,6 +32,12 @@ export function setStatusNote(what: string): void {
   statusEl.textContent = what;
 }
 
+// Just what is open, in the calm idle colour (a form waiting to be filled in, say).
+export function setStatusTitle(what: string): void {
+  statusEl.dataset.freshness = "idle";
+  statusEl.textContent = what;
+}
+
 export function resetStatus(): void {
   statusEl.dataset.freshness = "idle";
   statusEl.textContent = t().idle;

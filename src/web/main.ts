@@ -4,6 +4,7 @@ import { getLang, onLangChange, setLang, t } from "./i18n";
 import { createMap } from "./map";
 import type * as maplibregl from "maplibre-gl";
 import { closeOnEmptyMapTap, el } from "./panel";
+import { startRoute } from "./route";
 import { startSearch } from "./search";
 import { resetStatus } from "./status";
 import { startTripCard } from "./tripcard";
@@ -55,7 +56,7 @@ try {
   const note = el("p", "map-failed", t().mapFailed);
   note.dataset["t"] = "mapFailed"; // follows the language switch (applyTexts)
   mapEl.replaceChildren(note);
-  for (const input of document.querySelectorAll<HTMLInputElement | HTMLButtonElement>("#search, #near-me")) {
+  for (const input of document.querySelectorAll<HTMLInputElement | HTMLButtonElement>("#search, #near-me, #route-btn")) {
     input.disabled = true;
   }
 }
@@ -63,8 +64,20 @@ try {
 if (map) {
   // Order matters: the board's stop layers go first, the trip card puts its route line under them
   // and its vehicle on top of everything.
-  const board = startBoard(map, (trip) => card.showTrip(trip));
+  // The route planner is still being built: only with ?route=1 in the address.
+  const routeOn = new URLSearchParams(location.search).get("route") === "1";
+  const board = startBoard(
+    map,
+    (trip) => card.showTrip(trip),
+    routeOn ? (station, end) => route.open(end === "from" ? { from: station } : { to: station }) : null,
+  );
   const card = startTripCard(map, (stop) => board.showStop(stop));
   startSearch(board);
+  const route = startRoute(board);
+  if (routeOn) {
+    const btn = document.querySelector<HTMLButtonElement>("#route-btn")!;
+    btn.hidden = false;
+    btn.addEventListener("click", () => route.open());
+  }
   closeOnEmptyMapTap(map, ["vehicle-dot", "stop-hit", "trip-route-line", "trip-stop-dot"]);
 }

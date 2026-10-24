@@ -35,6 +35,15 @@
         <ul id="search-results" role="listbox" hidden></ul>
       </div>
       <div class="nav-right">
+        <!-- Route planner, still being built: shown only with ?route=1 (src/web/main.ts). -->
+        <button id="route-btn" type="button" data-t-label="routeButtonLabel" aria-label="Route planen" hidden>
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="6" cy="19" r="2" />
+            <circle cx="18" cy="5" r="2" />
+            <path d="M8 19h7.5a3.5 3.5 0 0 0 0-7h-7a3.5 3.5 0 0 1 0-7H16" />
+          </svg>
+          <span class="near-text" data-t="routeButton">Route</span>
+        </button>
         <button id="near-me" type="button" data-t-label="nearMeLabel" aria-label="Mein Standort: Haltestellen in der Nähe zeigen">
           <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />

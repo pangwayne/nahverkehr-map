@@ -72,7 +72,12 @@ export interface Board {
 }
 
 // `onTripTap`: a departure row was tapped (opens that trip's card).
-export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => void): Board {
+// `onRoute`: "Route from here" / "Route to here" on a stop's board; null hides both buttons.
+export function startBoard(
+  map: maplibregl.Map,
+  onTripTap: (trip: TripRef) => void,
+  onRoute: ((station: Station, end: "from" | "to") => void) | null = null,
+): Board {
   const nearBtn = document.querySelector<HTMLButtonElement>("#near-me")!;
   const user: PanelUser = { onClose: cleanUp };
 
@@ -303,6 +308,8 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
     if (nearby) {
       const names = shown.map((s) => `${shortName(s.station.name)} ${roundM(s.distanceM ?? 0)} m`).join(" · ");
       parts.push(el("p", "board-note", names));
+    } else if (onRoute && shown[0]) {
+      parts.push(routeButtons(shown[0].station, onRoute));
     }
 
     const got = shown.map((s) => results.get(s.station.id)).filter((r): r is Result => r !== undefined);
@@ -360,7 +367,16 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
 
 function oneOffStation(stop: StopRef): Station | null {
   if (!stop.stopId) return null;
-  return { id: stop.stopId, name: stop.name, lon: stop.lon, lat: stop.lat, stopIds: [stop.stopId], hasTram: false, hasTrain: false };
+  return {
+    id: stop.stopId,
+    name: stop.name,
+    lon: stop.lon,
+    lat: stop.lat,
+    stopIds: [stop.stopId],
+    planStopId: stop.stopId,
+    hasTram: false,
+    hasTrain: false,
+  };
 }
 
 function whenVisible(): Promise<void> {
@@ -376,6 +392,20 @@ function whenVisible(): Promise<void> {
 }
 
 const roundM = (m: number) => Math.round(m / 10) * 10;
+
+function routeButtons(station: Station, onRoute: (station: Station, end: "from" | "to") => void): HTMLElement {
+  const box = el("div", "board-route");
+  for (const [end, text] of [
+    ["from", t().routeFromHere],
+    ["to", t().routeToHere],
+  ] as const) {
+    const btn = focusKey(el("button", "board-route-btn", text) as HTMLButtonElement, `route-${end}`);
+    btn.type = "button";
+    btn.addEventListener("click", () => onRoute(station, end));
+    box.append(btn);
+  }
+  return box;
+}
 const nearYou = () => t().nearYou;
 
 // `sameStop`: the tapped station's name, left out of the row details; null shows it on every row.

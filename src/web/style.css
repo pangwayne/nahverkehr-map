@@ -246,6 +246,31 @@ body {
   background: var(--mint-dark);
 }
 
+/* Route planner button: same size as "Mein Standort", outlined so the location button stays the main one. */
+#route-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--mint);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--mint);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#route-btn[hidden] {
+  display: none;
+}
+
+#route-btn:hover {
+  background: #3ee6c11f;
+}
+
 /* Same pill as the language switch on www.pangwayne.com: the flag and code of the other language. */
 .lang-toggle {
   display: inline-flex;
@@ -301,7 +326,8 @@ html[lang="en"] .flag-en {
     display: none;
   }
 
-  #near-me {
+  #near-me,
+  #route-btn {
     width: 40px;
     padding: 0;
     justify-content: center;
@@ -876,3 +902,326 @@ html[lang="en"] .flag-en {
   color: #f2978f;
   font-weight: 600;
 }
+
+/* Read out by screen readers, not shown. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* "Route von hier" / "Route hierher" on a stop's board. */
+.board-route {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 6px;
+}
+
+.board-route-btn {
+  min-height: 32px;
+  padding: 4px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.board-route-btn:hover {
+  background: var(--hover);
+}
+
+/* Route panel: From / To with the stop search, when, and the search button. */
+.route-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 8px;
+}
+
+.route-label {
+  display: block;
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.route-row {
+  display: flex;
+  gap: 8px;
+}
+
+.route-input {
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--ink) 25%, transparent);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px; /* 16px stops iPhones zooming in on focus */
+}
+
+.route-input[aria-invalid="true"] {
+  border-color: var(--verylate);
+}
+
+.route-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--hover);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.route-icon:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+/* The stop list under a From / To field: in the flow of the panel, so it is never cut off. */
+.stop-list {
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.stop-list[hidden] {
+  display: none;
+}
+
+.route-when {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.route-modes {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--hover);
+}
+
+.route-mode {
+  position: relative;
+  display: inline-flex;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.route-mode input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.route-mode:has(input:checked) {
+  background: var(--accent);
+  color: var(--surface);
+}
+
+.route-mode:has(input:focus-visible) {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.route-moment {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.route-moment .route-input {
+  flex: 1 1 130px;
+}
+
+.route-now {
+  flex: none;
+  height: 42px;
+  padding: 0 14px;
+  border: 1px solid color-mix(in srgb, var(--ink) 25%, transparent);
+  border-radius: 10px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.route-now[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--hover);
+  color: var(--accent);
+}
+
+.route-error {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--verylate);
+}
+
+.route-error:empty {
+  display: none;
+}
+
+.route-error.note {
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+
+.route-submit {
+  height: 44px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--surface);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.route-submit:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* Connections. */
+.route-heading {
+  margin: 12px 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.route-options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.route-option {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.route-times {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.route-clock s {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.route-duration {
+  margin-left: auto;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.route-chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.route-sep {
+  color: var(--ink-soft);
+}
+
+.route-walk {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--hover);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.route-info {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.route-option.cancelled .route-times,
+.route-option.cancelled .route-chain {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+.route-pager {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+
+.route-page {
+  min-height: 36px;
+  padding: 4px 14px;
+  border: 1px solid color-mix(in srgb, var(--ink) 25%, transparent);
+  border-radius: 999px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.route-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+

@@ -168,3 +168,26 @@ export function parsePlan(answer: PlanResponse): Plan {
 export function journeyPath(j: Journey): LonLat[] {
   return j.legs.flatMap((l) => l.path);
 }
+
+// What went wrong with a search, for the message shown: `status` from the Worker (null: no answer at all).
+export type PlanFailure = "offline" | "unknownStop" | "tooMany" | "unavailable";
+
+export function planFailure(status: number | null, online: boolean): PlanFailure {
+  if (status === null) return online ? "unavailable" : "offline";
+  if (status === 404) return "unknownStop";
+  if (status === 429) return "tooMany";
+  return "unavailable";
+}
+
+// "35 min", "1 h 05 min" (same in German and English).
+export function durationText(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 60_000));
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return h ? `${h} h ${String(m).padStart(2, "0")} min` : `${m} min`;
+}
+
+// The first ride of a journey (most journeys start with one; some with a walk to the stop).
+export function firstRide(j: Journey): RideLeg | null {
+  return j.legs.find((l): l is RideLeg => l.kind === "ride") ?? null;
+}

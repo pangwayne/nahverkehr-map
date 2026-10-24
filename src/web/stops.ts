@@ -27,6 +27,7 @@ export interface Station {
   lon: number;
   lat: number;
   stopIds: string[]; // its platforms; asking for any one returns the whole station
+  planStopId: string; // what a route search uses for this station (see planStopId below)
   hasTram: boolean;
   hasTrain: boolean;
 }
@@ -83,10 +84,24 @@ export function groupStations(places: StopPlace[]): Station[] {
       lon,
       lat,
       stopIds: platforms.map((p) => p.stopId),
+      planStopId: planStopId(id, platforms, [lon, lat]),
       hasTram: platforms.some((p) => p.modes?.some((m) => m === "TRAM" || m === "SUBWAY") ?? false),
       hasTrain: platforms.some((p) => p.modes?.some((m) => TRAIN_MODES.has(m)) ?? false),
     };
   });
+}
+
+// The stop ID a route search sends for a station: the station's own ID when the stop list has it
+// (Transitous then plans to any of its platforms), else the platform nearest to its middle. Transitous
+// answers 404 for station IDs that are not in the list, so we never make one up (checked 2026-10-24).
+export function planStopId(stationId: string, platforms: StopPlace[], center: LonLat): string {
+  const own = platforms.find((p) => p.stopId === GERMAN_PREFIX + stationId);
+  if (own) return own.stopId;
+  let best = platforms[0]!;
+  for (const p of platforms) {
+    if (distanceM(center, [p.lon, p.lat]) < distanceM(center, [best.lon, best.lat])) best = p;
+  }
+  return best.stopId;
 }
 
 function average(places: StopPlace[]): LonLat {
