@@ -35,6 +35,7 @@ export const hexOrNull = (c: string | undefined): string | null => (c && HEX_COL
 
 // Long-distance and other non-local traffic is left off the boards (IC/ICE, coaches, planes).
 const HIDDEN_MODES = new Set<Mode>(["HIGHSPEED_RAIL", "LONG_DISTANCE", "NIGHT_RAIL", "COACH", "AIRPLANE"]);
+export const isHiddenMode = (mode: Mode): boolean => HIDDEN_MODES.has(mode);
 
 const RAIL_MODES = new Set<Mode>(["REGIONAL_RAIL", "REGIONAL_FAST_RAIL", "SUBURBAN", "RAIL"]);
 

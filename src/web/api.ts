@@ -86,6 +86,32 @@ export interface Itinerary {
   legs: Leg[];
 }
 
+// One leg of a /plan answer: a ride (with a trip) or a walk ("WALK", no trip, no line).
+export interface PlanLeg extends Leg {
+  startTime: string; // predicted, UTC
+  endTime: string;
+  scheduledStartTime: string;
+  scheduledEndTime: string;
+  duration: number; // seconds
+  interlineWithPreviousLeg?: boolean; // same vehicle as the leg before: stay seated
+}
+
+export interface PlanItinerary {
+  startTime: string;
+  endTime: string;
+  duration: number; // seconds
+  transfers: number;
+  legs: PlanLeg[];
+}
+
+// /plan: connections, plus walking all the way (`direct`), plus cursors for earlier and later ones.
+export interface PlanResponse {
+  itineraries: PlanItinerary[];
+  direct: PlanItinerary[];
+  previousPageCursor?: string;
+  nextPageCursor?: string;
+}
+
 export interface Fetched<T> {
   data: T;
   fetchedAtMs: number; // when the Worker got it from Transitous
