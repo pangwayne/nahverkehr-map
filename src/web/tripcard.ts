@@ -212,10 +212,19 @@ export function startTripCard(map: maplibregl.Map, onStopTap: (stop: StopRef) =>
 
     if (error && age > STALE_AFTER_S) parts.push(el("p", "board-note board-error", t().tripUnavailable));
 
-    // Passed stops are folded away (all but the last one), so the summary stays at the top.
-    const firstShown = showEarlier || progress.next === null ? 0 : Math.max(0, progress.next - 1);
+    // Passed stops are folded away (all but the last one), so the summary stays at the top. Before the
+    // start, all earlier stops go: they are cancelled (the trip starts further along its line).
+    const firstShown =
+      showEarlier || progress.next === null
+        ? 0
+        : progress.state === "before"
+          ? progress.next
+          : Math.max(0, progress.next - 1);
     if (firstShown > 0) {
-      const earlierBtn = focusKey(el("button", "link-button", t().earlierStops(firstShown)), "earlier");
+      const folded = route.stops.slice(0, firstShown);
+      const served = folded.filter((s) => !s.cancelled).length;
+      const label = served > 0 ? t().earlierStops(served) : t().cancelledStops(folded.length);
+      const earlierBtn = focusKey(el("button", "link-button", label), "earlier");
       earlierBtn.addEventListener("click", () => {
         showEarlier = true;
         update();

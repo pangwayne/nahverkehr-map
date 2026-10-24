@@ -19,7 +19,7 @@ import {
 import { type PanelUser, ageLine, el, focusKey, offsetClearOfPanel, openPanel, ownsPanel, renderPanel } from "./panel";
 import { t, onLangChange } from "./i18n";
 import { setStationNames, shortName } from "./names";
-import { ageText, resetStatus, setStatus } from "./status";
+import { ageText, resetStatus, setStatus, setStatusNote } from "./status";
 import { startStopLines } from "./stoplines";
 import { type Station, groupStations, matchStation, nearestStations } from "./stops";
 import type { TripRef } from "./tripcard";
@@ -84,6 +84,7 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
   // Functions, so a language switch redraws them in the new language.
   let title = () => "";
   let message: (() => string) | null = null;
+  let messageBusy: () => boolean = () => false; // still waiting for something ("finding you")
   let shown: Shown[] = [];
   let results = new Map<string, Result>();
   let generation = 0; // bumps whenever the board changes, so late answers are ignored
@@ -175,12 +176,14 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
     void refresh();
   }
 
-  function showMessage(heading: () => string, text: () => string): void {
+  // `busy`: the status line says "loading" while true; otherwise the message is the final answer.
+  function showMessage(heading: () => string, text: () => string, busy: () => boolean = () => false): void {
     openPanel(user);
     generation++;
     shown = [];
     title = heading;
     message = text;
+    messageBusy = busy;
     stopLines.clear();
     highlight([]);
     render();
@@ -236,7 +239,7 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
       showMessage(nearYou, () => t().needsHttps);
       return;
     }
-    showMessage(nearYou, () => t().findingYou);
+    showMessage(nearYou, () => t().findingYou, () => true);
     let gen = generation;
 
     navigator.geolocation.getCurrentPosition(
@@ -244,7 +247,11 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
         if (gen !== generation) return; // the user did something else meanwhile
         if (!stations.length) {
           // Located, but the stop list is not here yet: say so instead of "finding you".
-          showMessage(nearYou, () => (stationsFailed ? t().stopsFailed : t().searchLoading));
+          showMessage(
+            nearYou,
+            () => (stationsFailed ? t().stopsFailed : t().searchLoading),
+            () => !stationsFailed,
+          );
           gen = generation;
           await stationsReady;
           if (gen !== generation) return;
@@ -281,7 +288,8 @@ export function startBoard(map: maplibregl.Map, onTripTap: (trip: TripRef) => vo
   function render(): void {
     const heading = title();
     if (message !== null) {
-      setStatus(heading, null, false);
+      if (messageBusy()) setStatus(heading, null, false);
+      else setStatusNote(heading);
       renderPanel(user, heading, [el("p", "board-note", message())]);
       return;
     }

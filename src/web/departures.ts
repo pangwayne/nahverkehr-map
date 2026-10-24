@@ -152,6 +152,10 @@ export function distinctLines(rows: DepartureRow[]): DepartureRow[] {
 
 export const lineKey = (r: DepartureRow): string => `${r.mode}|${r.line}`;
 
+// One variant of a line: its direction, short workings and branches each have their own destination,
+// and two towns' "bus 1" go to different places. Used to remember a line's path on the map.
+export const routeKey = (r: DepartureRow): string => `${lineKey(r)}|${r.headsign}`;
+
 // Same thresholds as the vehicle ring on the map (guidelines section 5.3).
 export function delayLevel(delaySec: number, realTime: boolean): DelayLevel {
   if (!realTime) return "unknown";

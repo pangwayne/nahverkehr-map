@@ -4,7 +4,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 // Dev: maplibre-gl is excluded from Vite's pre-bundling (vite.config.ts), so that lookup just works.
 // Production: the bundler moves the module, so let Vite bundle the worker and pass its URL.
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
-import { getLang } from "./i18n";
+import { getLang, onLangChange, t } from "./i18n";
 
 if (!import.meta.env.DEV) maplibregl.setWorkerUrl(workerUrl);
 
@@ -53,8 +53,9 @@ function saveView(map: maplibregl.Map): void {
   }
 }
 
-// MapLibre's own button labels in German. Set when the map starts; a language switch updates them on the next visit.
+// MapLibre's own labels in German (it brings the English ones).
 const MAP_TEXTS_DE: Record<string, string> = {
+  "Map.Title": "Karte",
   "NavigationControl.ZoomIn": "Vergrößern",
   "NavigationControl.ZoomOut": "Verkleinern",
   "NavigationControl.ResetBearing": "Nach Norden ausrichten",
@@ -69,15 +70,28 @@ export function createMap(container: HTMLElement): maplibregl.Map {
     style: STYLE_URL,
     center: view?.center ?? BONN_CENTER,
     zoom: view?.zoom ?? START_ZOOM,
-    ...(getLang() === "de" ? { locale: MAP_TEXTS_DE } : {}),
-    attributionControl: {
-      compact: true,
-      customAttribution: '<a href="https://transitous.org/sources/" target="_blank" rel="noopener">Transitous data sources</a>',
-    },
+    attributionControl: false, // added below, in the page's language
   });
+  const english = { ...map._locale };
 
+  // MapLibre reads its labels only when a control is added, so a language switch adds them again.
   // No MapLibre locate button: "My location" is the only way the app asks for the location (one-off, no tracking).
-  map.addControl(new maplibregl.NavigationControl({ showCompass: true }), "top-right");
+  let controls: maplibregl.IControl[] = [];
+  const addControls = () => {
+    for (const c of controls) map.removeControl(c);
+    map._locale = getLang() === "de" ? { ...english, ...MAP_TEXTS_DE } : english;
+    map.getCanvas().setAttribute("aria-label", map._getUIString("Map.Title"));
+    const sources = `<a href="https://transitous.org/sources/" target="_blank" rel="noopener">${t().footerSources}</a>`;
+    controls = [
+      new maplibregl.NavigationControl({ showCompass: true }),
+      new maplibregl.AttributionControl({ compact: true, customAttribution: sources }),
+    ];
+    map.addControl(controls[0]!, "top-right");
+    map.addControl(controls[1]!, "bottom-right");
+  };
+  addControls();
+  onLangChange(addControls);
+
   map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
   map.on("moveend", () => saveView(map));
 

@@ -25,6 +25,12 @@ export function setStatus(what: string, ageS: number | null, error: boolean): vo
   statusEl.textContent = text;
 }
 
+// Just what is open, for a message that is no data and not loading either ("no stops nearby").
+export function setStatusNote(what: string): void {
+  statusEl.dataset.freshness = "unavailable";
+  statusEl.textContent = what;
+}
+
 export function resetStatus(): void {
   statusEl.dataset.freshness = "idle";
   statusEl.textContent = t().idle;

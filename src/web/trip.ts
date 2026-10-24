@@ -168,14 +168,16 @@ function useTimetableFrom(stops: RouteStop[], from: number): void {
 export const leaveMs = (s: RouteStop) => s.depMs ?? s.arrMs;
 export const reachMs = (s: RouteStop) => s.arrMs ?? s.depMs;
 
-// Where along its stops the trip is at `nowMs`. Cancelled stops are skipped.
+// Where along its stops the trip is at `nowMs`. Cancelled stops are skipped, so a trip whose first
+// stops are all cancelled starts at its first stop that is not.
 export function progressAt(stops: RouteStop[], nowMs: number): TripProgress {
   const next = stops.findIndex((s) => !s.cancelled && (leaveMs(s) ?? -Infinity) > nowMs);
   if (next === -1) return { state: "ended", next: null, delaySec: 0 };
 
   const stop = stops[next]!;
   const reach = reachMs(stop) ?? nowMs;
-  const state: TripState = next === 0 && stop.arrMs === null ? "before" : reach <= nowMs ? "atStop" : "moving";
+  const first = stops.findIndex((s) => !s.cancelled);
+  const state: TripState = next === first ? "before" : reach <= nowMs ? "atStop" : "moving";
 
   // Delay when leaving that stop (what a passenger waiting there cares about, and what the stop list
   // shows); at the last stop, when arriving.
