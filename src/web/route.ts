@@ -52,7 +52,14 @@ interface Field {
 type Outcome =
   | { kind: "none" }
   | { kind: "searching" }
-  | { kind: "plan"; plan: Plan; name: string; fetchedAtMs: number; refreshFailed: boolean }
+  | {
+      kind: "plan";
+      plan: Plan;
+      name: string;
+      fetchedAtMs: number;
+      refreshFailed: boolean;
+      pageFailed: { failure: PlanFailure; retryAfterS: number | null } | null; // Earlier / Later failed: these connections stay, the buttons try again
+    }
   | { kind: "failed"; failure: PlanFailure; retryAfterS: number | null };
 
 // `openTrip`: a ride in a connection's details was tapped (opens its trip card, which can come back here).
@@ -446,10 +453,12 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       if (!lastSearch) return;
       const request = again ? refreshRequest(lastSearch, Date.now()) : { ...lastSearch.request, cursor };
       if (!request) {
-        // A chosen time that is now too far back: say so, keep the connections, send nothing.
-        if (outcome.kind === "plan") outcome = { ...outcome, refreshFailed: true };
-        fieldError = t().routeTimeRange;
+        // A chosen time that is now too far back: keep the connections, send nothing, and open the form at the
+        // date, where the reason is shown and a new time can be picked.
+        if (outcome.kind === "plan") outcome = { ...outcome, refreshFailed: true, pageFailed: null };
+        folded = false;
         render();
+        showFieldError(t().routeTimeRange, b.date);
         return;
       }
       submitted = { ...lastSearch, request };
@@ -477,7 +486,14 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       if (controller !== mine) return;
       lastSearch = submitted;
       // A stale copy (first search, page or refresh) is shown, but marked: the latest try for news failed.
-      outcome = { kind: "plan", plan: parsePlan(res.data), name, fetchedAtMs: res.fetchedAtMs, refreshFailed: isStale(res) };
+      outcome = {
+        kind: "plan",
+        plan: parsePlan(res.data),
+        name,
+        fetchedAtMs: res.fetchedAtMs,
+        refreshFailed: isStale(res),
+        pageFailed: null,
+      };
       const n = outcome.plan.journeys.length + (outcome.plan.walk ? 1 : 0);
       b.announce.textContent = n ? t().routeFound(n) : t().routeNone;
       found = n > 0;
@@ -487,9 +503,14 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       // Anything that is not a refusal from the Worker (a bug while reading the answer, say) counts as "no
       // answer", so the panel never stays at "Searching...".
       const failure = err instanceof PlanError ? err : new PlanError(null, null);
-      // A refresh that fails keeps the connections on screen, marked as not refreshed.
+      // A refresh that fails keeps the connections on screen, marked as not refreshed. A failed page keeps
+      // them too, with the reason next to Earlier / Later, which try again.
       if (again && previous.kind === "plan") {
-        outcome = { ...previous, refreshFailed: true };
+        outcome = { ...previous, refreshFailed: true, pageFailed: null };
+      } else if (cursor !== null && previous.kind === "plan") {
+        const pageFailed = { failure: planFailure(failure.status, navigator.onLine), retryAfterS: failure.retryAfterS };
+        outcome = { ...previous, pageFailed };
+        b.announce.textContent = failureText(pageFailed.failure, pageFailed.retryAfterS);
       } else {
         outcome = { kind: "failed", failure: planFailure(failure.status, navigator.onLine), retryAfterS: failure.retryAfterS };
         // A failed search from the form keeps the form open; a failed page keeps the fold as it was.
@@ -623,6 +644,8 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     if (plan.earlier) pager.append(pagerButton(t().routeEarlier, "earlier", plan.earlier));
     if (plan.later) pager.append(pagerButton(t().routeLater, "later", plan.later));
     if (pager.childElementCount) nodes.push(pager);
+    const failed = outcome.pageFailed;
+    if (failed) nodes.push(el("p", "board-note board-error", failureText(failed.failure, failed.retryAfterS)));
 
     const foot = el("div", "route-foot");
     foot.append(el("span", "route-age"));

@@ -122,19 +122,38 @@ function toLeg(leg: PlanLeg, previous: JourneyLeg | undefined): JourneyLeg {
 
 const isRide = (leg: PlanLeg | undefined): boolean => leg !== undefined && leg.mode !== "WALK";
 
+// After a ride was moved to its (later) timetable times, the walks behind it move along with it. A ride that
+// then leaves before the leg in front of it has ended cannot be caught: false, the journey no longer works.
+// The other rides keep their own times; only Transitous knows those.
+function retime(legs: JourneyLeg[]): boolean {
+  for (let i = 1; i < legs.length; i++) {
+    const leg = legs[i]!;
+    const endMs = legs[i - 1]!.to.ms;
+    if (leg.from.ms >= endMs) continue;
+    if (leg.kind === "ride") return false;
+    const shift = endMs - leg.from.ms;
+    leg.from.ms += shift;
+    leg.to.ms += shift;
+  }
+  return true;
+}
+
 // One itinerary as a journey, or null if it uses a mode the app leaves out (IC/ICE and the like;
 // the Worker already asks Transitous not to, this is the second lock) or has nothing left.
 export function toJourney(it: PlanItinerary): Journey | null {
   if (it.legs.some((l) => isHiddenMode(l.mode))) return null;
   const legs: JourneyLeg[] = [];
+  let corrected = false; // a ride's live times were thrown out for the timetable (toLeg)
   it.legs.forEach((raw, i) => {
     const leg = toLeg(raw, legs[legs.length - 1]);
+    if (leg.kind === "ride" && raw.realTime && !leg.realTime) corrected = true;
     // A tiny walk between two rides says nothing. A walk at the start or end stays, however short: it
     // leads to or from the stops that were asked for (and a walk-only journey keeps its walk).
     const betweenRides = isRide(it.legs[i - 1]) && isRide(it.legs[i + 1]);
     if (leg.kind === "walk" && raw.duration < SHORT_WALK_S && betweenRides) return;
     legs.push(leg);
   });
+  if (corrected && !retime(legs)) return null;
   const first = legs[0];
   const last = legs[legs.length - 1];
   if (!first || !last) return null;
