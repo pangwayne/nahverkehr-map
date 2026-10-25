@@ -2,7 +2,7 @@
   "name": "nahverkehr-map",
   "version": "0.1.0",
   "private": true,
-  "description": "Live departures for Bonn, with the route and estimated position of a tapped vehicle",
+  "description": "Live departures, estimated vehicle positions and route search for the Rhineland (Bonn, Köln, Düsseldorf)",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -26,5 +26,8 @@
   "dependencies": {
     "@fontsource-variable/hanken-grotesk": "^5.3.0",
     "maplibre-gl": "^6.12.0"
+  },
+  "overrides": {
+    "undici": "^7.30.1"
   }
 }

@@ -4,7 +4,7 @@
 // Only stop IDs and the time leave the phone; the location button picks the nearest stop on the phone.
 
 import type * as maplibregl from "maplibre-gl";
-import { type PlanRequest, PlanError, fetchPlan } from "./api";
+import { type PlanRequest, PlanError, fetchPlan, isStale } from "./api";
 import { berlinDateTime, fromBerlin, planTime } from "./berlintime";
 import type { Board } from "./board";
 import { badgeTextColor, delayState, formatClock } from "./departures";
@@ -476,7 +476,8 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       const res = await fetchPlan(request, mine.signal);
       if (controller !== mine) return;
       lastSearch = submitted;
-      outcome = { kind: "plan", plan: parsePlan(res.data), name, fetchedAtMs: res.fetchedAtMs, refreshFailed: false };
+      // A stale copy (first search, page or refresh) is shown, but marked: the latest try for news failed.
+      outcome = { kind: "plan", plan: parsePlan(res.data), name, fetchedAtMs: res.fetchedAtMs, refreshFailed: isStale(res) };
       const n = outcome.plan.journeys.length + (outcome.plan.walk ? 1 : 0);
       b.announce.textContent = n ? t().routeFound(n) : t().routeNone;
       found = n > 0;

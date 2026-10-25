@@ -22,6 +22,8 @@ npm run build      # generate Cloudflare types, typecheck, production build
 npm run deploy     # build + deploy to Cloudflare (needs `npx wrangler login` once)
 ```
 
+The tests are kept outside this repository, so `npm test` does not run in a fresh clone.
+
 ## How it works
 
 - **Browser** (`src/web`): the map (MapLibre), stop search, departure board and trip card. All texts are

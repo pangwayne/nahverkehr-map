@@ -4,7 +4,7 @@
 
 import type { FeatureCollection, Point } from "geojson";
 import type * as maplibregl from "maplibre-gl";
-import { fetchTrip } from "./api";
+import { fetchTrip, isStale } from "./api";
 import type { StopRef } from "./board";
 import { badgeTextColor, delayLevel, formatClock, formatCountdown, formatDelay, platformLabel } from "./departures";
 import type { LonLat } from "./geo";
@@ -162,7 +162,7 @@ export function startTripCard(map: maplibregl.Map, onStopTap: (stop: StopRef) =>
       route = r;
       prepared = prepareRoute(tapped.tripId, r);
       fetchedAtMs = res.fetchedAtMs;
-      error = null;
+      error = isStale(res) ? "stale copy from the Worker" : null;
     } catch (err) {
       if (gen !== generation) return;
       error = String(err);

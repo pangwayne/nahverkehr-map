@@ -120,17 +120,21 @@ function toLeg(leg: PlanLeg, previous: JourneyLeg | undefined): JourneyLeg {
   };
 }
 
+const isRide = (leg: PlanLeg | undefined): boolean => leg !== undefined && leg.mode !== "WALK";
+
 // One itinerary as a journey, or null if it uses a mode the app leaves out (IC/ICE and the like;
 // the Worker already asks Transitous not to, this is the second lock) or has nothing left.
 export function toJourney(it: PlanItinerary): Journey | null {
   if (it.legs.some((l) => isHiddenMode(l.mode))) return null;
   const legs: JourneyLeg[] = [];
-  for (const raw of it.legs) {
+  it.legs.forEach((raw, i) => {
     const leg = toLeg(raw, legs[legs.length - 1]);
-    // A tiny walk between two rides says nothing; a walk-only journey keeps its walk.
-    if (leg.kind === "walk" && raw.duration < SHORT_WALK_S && it.legs.length > 1) continue;
+    // A tiny walk between two rides says nothing. A walk at the start or end stays, however short: it
+    // leads to or from the stops that were asked for (and a walk-only journey keeps its walk).
+    const betweenRides = isRide(it.legs[i - 1]) && isRide(it.legs[i + 1]);
+    if (leg.kind === "walk" && raw.duration < SHORT_WALK_S && betweenRides) return;
     legs.push(leg);
-  }
+  });
   const first = legs[0];
   const last = legs[legs.length - 1];
   if (!first || !last) return null;

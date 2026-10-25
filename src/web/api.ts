@@ -115,7 +115,13 @@ export interface PlanResponse {
 export interface Fetched<T> {
   data: T;
   fetchedAtMs: number; // when the Worker got it from Transitous
-  cacheState: string | null; // HIT / MISS / STALE (debug)
+  cacheState: string | null; // HIT / MISS / STALE
+}
+
+// The Worker could not get a fresh copy (Transitous failed, or this visitor hit the rate limit) and sent
+// its last good one instead. Shown like a failed refresh: the data is real, but the latest try failed.
+export function isStale(res: Fetched<unknown>): boolean {
+  return res.cacheState === "STALE";
 }
 
 async function fetchJson<T>(path: string, signal?: AbortSignal): Promise<Fetched<T>> {

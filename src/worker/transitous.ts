@@ -76,12 +76,18 @@ export const PLAN_MAX_TRANSFERS = 4;
 // How far the search time may lie from now: a little in the past (a page left open), a week ahead.
 export const PLAN_PAST_MS = 2 * 3600_000;
 export const PLAN_AHEAD_MS = 7 * 86_400_000;
+// A page cursor may point a little past that window, on purpose: the "later" page of a search near the end
+// of the week points a few hours beyond it, the "earlier" page of a search 2 h back points before it. A day
+// covers both without opening far-off dates.
+export const PLAN_CURSOR_MARGIN_MS = 86_400_000;
 
 const PLAN_TIME_PATTERN = /^20\d{2}-[01]\d-[0-3]\dT[0-2]\d:[0-5]\dZ$/;
-const PLAN_CURSOR_PATTERN = /^(EARLIER|LATER)\|\d{10}$/;
+const PLAN_CURSOR_PATTERN = /^(EARLIER|LATER)\|(\d{10})$/;
 
 // The checked search, or null if any field is missing, malformed, a date that does not exist,
 // outside the allowed time window, or from and to are the same stop.
+// With a page cursor the cursor's time decides (it wins over `time` upstream), so an old open tab can still
+// page; `time` is then only checked for its form (it is part of the cache key).
 export function parsePlanQuery(params: URLSearchParams, nowMs: number): PlanQuery | null {
   const from = params.get("from") ?? "";
   const to = params.get("to") ?? "";
@@ -93,9 +99,17 @@ export function parsePlanQuery(params: URLSearchParams, nowMs: number): PlanQuer
   const ms = Date.parse(time);
   // "2026-02-30T10:00Z" parses as 2 March: the round trip catches dates that do not exist.
   if (Number.isNaN(ms) || new Date(ms).toISOString().slice(0, 16) + "Z" !== time) return null;
-  if (ms < nowMs - PLAN_PAST_MS || ms > nowMs + PLAN_AHEAD_MS) return null;
   if (arriveBy !== "0" && arriveBy !== "1") return null;
-  if (cursor !== null && !PLAN_CURSOR_PATTERN.test(cursor)) return null;
+  if (cursor === null) {
+    if (ms < nowMs - PLAN_PAST_MS || ms > nowMs + PLAN_AHEAD_MS) return null;
+  } else {
+    const match = PLAN_CURSOR_PATTERN.exec(cursor);
+    if (!match) return null;
+    const cursorMs = Number(match[2]) * 1000;
+    const earliest = nowMs - PLAN_PAST_MS - PLAN_CURSOR_MARGIN_MS;
+    const latest = nowMs + PLAN_AHEAD_MS + PLAN_CURSOR_MARGIN_MS;
+    if (cursorMs < earliest || cursorMs > latest) return null;
+  }
   return { from, to, time, arriveBy: arriveBy === "1", cursor };
 }
 

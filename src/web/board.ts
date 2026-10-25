@@ -5,7 +5,7 @@
 
 import type { FeatureCollection } from "geojson";
 import * as maplibregl from "maplibre-gl";
-import { fetchDepartures, fetchStops } from "./api";
+import { fetchDepartures, fetchStops, isStale } from "./api";
 import {
   type DepartureRow,
   badgeTextColor,
@@ -224,7 +224,7 @@ export function startBoard(
           results.set(station.id, {
             rows: toRows(res.data.stopTimes),
             fetchedAtMs: res.fetchedAtMs,
-            error: null,
+            error: isStale(res) ? "stale copy from the Worker" : null,
           });
         } catch (err) {
           if (gen !== generation) return;
