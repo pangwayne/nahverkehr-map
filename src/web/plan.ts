@@ -2,9 +2,11 @@
 // Pure functions only (no DOM, no fetch), so everything here is unit tested on saved answers.
 // Names stay as Transitous sends them; the panel shortens them (names.ts) like the board does.
 
-import type { Mode, PlanItinerary, PlanLeg, PlanResponse, TripStopPlace } from "./api";
+import type { Mode, PlanItinerary, PlanLeg, PlanRequest, PlanResponse, TripStopPlace } from "./api";
+import { planTime } from "./berlintime";
 import { hexOrNull, isHiddenMode, lineName, platformLabel, tooEarly } from "./departures";
 import { type LonLat, decodePolyline } from "./geo";
+import { PLAN_PAST_MS } from "../worker/transitous";
 
 export interface LegStop {
   name: string;
@@ -185,6 +187,27 @@ export function durationText(ms: number): string {
   const h = Math.floor(total / 60);
   const m = total % 60;
   return h ? `${h} h ${String(m).padStart(2, "0")} min` : `${m} min`;
+}
+
+// How long a journey takes, in whole minutes, the same everywhere it is shown. Walking all the way uses the
+// walk's own seconds rounded up (its clock times are whole minutes, so their difference can be one less).
+export function journeyMinutes(j: Journey): number {
+  const only = j.legs.length === 1 ? j.legs[0] : undefined;
+  return only?.kind === "walk" ? only.minutes : Math.round((j.arrMs - j.depMs) / 60_000);
+}
+
+// The search whose answer is on screen, kept apart from the form (which may hold unsent edits).
+export interface SubmittedSearch {
+  request: PlanRequest;
+  isNow: boolean; // searched with "Now": a refresh searches from the new now
+  name: string; // "Bonn Hbf → K-Neumarkt"
+}
+
+// What Refresh sends: a "Now" search from the current minute (first page again); a search for a chosen
+// time as it was, or null once that time is too far back for the Worker.
+export function refreshRequest(s: SubmittedSearch, nowMs: number): PlanRequest | null {
+  if (s.isNow) return { ...s.request, time: planTime(nowMs), cursor: null };
+  return Date.parse(s.request.time) < nowMs - PLAN_PAST_MS ? null : s.request;
 }
 
 // The first ride of a journey (most journeys start with one; some with a walk to the stop).

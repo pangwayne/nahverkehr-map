@@ -1,7 +1,7 @@
 // The route panel: pick a start and a destination stop and a time, then see up to 5 connections, open one
 // to see its details and draw it on the map, and follow any ride in its trip card.
 // Light on Transitous: a search runs only when the button is pressed, one at a time, never by itself.
-// Only stop IDs and the time leave the phone; "My location" picks the nearest stop on the phone.
+// Only stop IDs and the time leave the phone; the location button picks the nearest stop on the phone.
 
 import type * as maplibregl from "maplibre-gl";
 import { type PlanRequest, PlanError, fetchPlan } from "./api";
@@ -19,11 +19,14 @@ import {
   type Plan,
   type PlanFailure,
   type RideLeg,
+  type SubmittedSearch,
   durationText,
   firstRide,
+  journeyMinutes,
   journeyPath,
   parsePlan,
   planFailure,
+  refreshRequest,
 } from "./plan";
 import { ageText, resetStatus, setStatus, setStatusNote, setStatusTitle } from "./status";
 import { attachStopSearch } from "./stopsearch";
@@ -60,11 +63,12 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
   let detail: Journey | null = null; // the connection whose details are open (kept while its trip card is open)
   let built: ReturnType<typeof buildForm> | null = null;
   let outcome: Outcome = { kind: "none" };
-  let lastRequest: PlanRequest | null = null;
-  let lastName = ""; // "Bonn Hbf → K-Neumarkt" of the last search, for the status line
+  let lastSearch: SubmittedSearch | null = null; // the search whose answer is on screen
   let controller: AbortController | null = null;
   let timeNote: string | null = null; // "this time happens twice" and the like
   let fieldError: string | null = null;
+  let locateSeq = 0; // number of the latest location lookup; an older one's answer is ignored
+  let locating: { station: Station | null; text: string } | null = null; // a lookup is pending: From as it was
 
   onLangChange(() => {
     if (!built) return;
@@ -79,7 +83,10 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
 
   function open(ends: { from?: Station; to?: Station } = {}): void {
     built ??= buildForm();
-    if (ends.from) pick(built.from, ends.from);
+    if (ends.from) {
+      cancelLocate(false);
+      pick(built.from, ends.from);
+    }
     if (ends.to) pick(built.to, ends.to);
     if (built.isNow) fillNow();
     openPanel(user);
@@ -126,6 +133,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     controller?.abort();
     controller = null;
     if (outcome.kind === "searching") outcome = { kind: "none" };
+    cancelLocate(true);
     journeyMap.show(null);
     resetStatus();
   }
@@ -136,8 +144,8 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     back.addEventListener("click", () => showList(optionKey(j)));
 
     const summary = el("p", "route-summary");
-    summary.append(clock(j.depMs, j.schedDepMs), " → ", clock(j.arrMs, j.schedArrMs));
-    const facts = [durationText(j.arrMs - j.depMs), j.transfers ? t().routeTransfers(j.transfers) : t().routeDirect];
+    summary.append(clock(j.depMs, j.schedDepMs), " ", ...arrow(), " ", clock(j.arrMs, j.schedArrMs));
+    const facts = [durationText(journeyMinutes(j) * 60_000), j.transfers ? t().routeTransfers(j.transfers) : t().routeDirect];
     summary.append(` · ${facts.join(" · ")}`);
 
     const list = el("ol", "journey-legs");
@@ -209,6 +217,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     from.row.append(locate);
     const swap = iconButton("route-swap", SWAP_ICON);
     swap.addEventListener("click", () => {
+      cancelLocate(true);
       const a = fromState.station;
       const aText = fromState.input.value;
       setField(fromState, toState.station, toState.input.value);
@@ -300,7 +309,8 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       fieldError = null;
       render();
     };
-    attachStopSearchField(board, fromState, from.list, picked);
+    // Typing or picking a start ends a pending location lookup: the user's choice wins.
+    attachStopSearchField(board, fromState, from.list, picked, () => cancelLocate(false));
     attachStopSearchField(board, toState, to.list, picked);
     return state;
   }
@@ -322,16 +332,24 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     built.time.value = time;
   }
 
+  // The nearest stop as the start. While the position is being found, From is empty and holds no stop, so a
+  // search cannot go out with the old start. Each lookup has a number: when the user moves on (types or picks
+  // a start, swaps, closes the panel, opens it from a board), the lookup is cancelled, and its late answer
+  // changes nothing.
   async function useLocation(): Promise<void> {
     const b = built!;
     if (!window.isSecureContext || !("geolocation" in navigator)) {
       showFieldError(t().needsHttps, b.from.input);
       return;
     }
+    cancelLocate(false);
+    const mine = ++locateSeq;
+    locating = { station: b.from.station, text: b.from.input.value };
+    const before = locating;
     b.locate.disabled = true;
-    const before = { station: b.from.station, text: b.from.input.value };
-    b.from.input.value = "";
+    setField(b.from, null, "");
     b.from.input.placeholder = t().findingYou;
+    const current = () => mine === locateSeq;
     try {
       const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
         navigator.geolocation.getCurrentPosition(resolve, reject, {
@@ -340,9 +358,12 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
           maximumAge: 30_000,
         }),
       );
+      if (!current()) return;
       await board.stationsReady;
+      if (!current()) return;
       const near = nearestStations(board.stations(), pos.coords.longitude, pos.coords.latitude, LOCATION_RADIUS_M, 1);
       const station = near[0]?.station;
+      releaseLocate();
       if (station) {
         pick(b.from, station);
         fieldError = null;
@@ -352,13 +373,30 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
         showFieldError(t().routeNoStopNear, b.from.input);
       }
     } catch (err) {
+      if (!current()) return;
+      releaseLocate();
       setField(b.from, before.station, before.text);
       const denied = (err as GeolocationPositionError).code === 1;
       showFieldError(denied ? t().routeLocationDenied : t().routeLocationFailed, b.from.input);
-    } finally {
-      b.locate.disabled = false;
-      b.from.input.placeholder = t().routeFromHint;
     }
+  }
+
+  // Ends the waiting state of a lookup (button, placeholder); the lookup itself may still answer later.
+  function releaseLocate(): void {
+    locating = null;
+    if (!built) return;
+    built.locate.disabled = false;
+    built.from.input.placeholder = t().routeFromHint;
+  }
+
+  // Cancels a pending lookup at once. `restore`: put back the start it emptied (swap, close); not when the
+  // user is already typing or picking a new one.
+  function cancelLocate(restore: boolean): void {
+    if (!locating || !built) return;
+    const before = locating;
+    locateSeq++;
+    releaseLocate();
+    if (restore) setField(built.from, before.station, before.text);
   }
 
   // Always null, so a check can say `return refuse(...)`.
@@ -374,19 +412,28 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     render();
   }
 
-  // `cursor`: an earlier/later page of the last search; null for a new search from the form.
+  // `cursor`: an earlier/later page of the last search; `again`: refresh it. Both use only the submitted
+  // search, never the form, so unsent edits in the form stay as they are. Neither: a new search from the form.
   async function search(cursor: string | null, again = false): Promise<void> {
     const b = built!;
-    let request: PlanRequest;
+    let submitted: SubmittedSearch;
     if (cursor !== null || again) {
-      if (!lastRequest) return;
-      request = again ? lastRequest : { ...lastRequest, cursor };
+      if (!lastSearch) return;
+      const request = again ? refreshRequest(lastSearch, Date.now()) : { ...lastSearch.request, cursor };
+      if (!request) {
+        // A chosen time that is now too far back: say so, keep the connections, send nothing.
+        if (outcome.kind === "plan") outcome = { ...outcome, refreshFailed: true };
+        fieldError = t().routeTimeRange;
+        render();
+        return;
+      }
+      submitted = { ...lastSearch, request };
     } else {
-      const checked = checkForm();
-      if (!checked) return;
-      request = checked;
+      const request = checkForm();
+      if (!request) return;
+      submitted = { request, isNow: b.isNow, name: routeName() };
     }
-    const name = cursor !== null || again ? lastName : routeName();
+    const { request, name } = submitted;
 
     controller?.abort();
     const mine = new AbortController();
@@ -400,18 +447,20 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     try {
       const res = await fetchPlan(request, mine.signal);
       if (controller !== mine) return;
-      lastRequest = request;
-      lastName = name;
+      lastSearch = submitted;
       outcome = { kind: "plan", plan: parsePlan(res.data), name, fetchedAtMs: res.fetchedAtMs, refreshFailed: false };
       const n = outcome.plan.journeys.length + (outcome.plan.walk ? 1 : 0);
       b.announce.textContent = n ? t().routeFound(n) : t().routeNone;
     } catch (err) {
-      if (controller !== mine || !(err instanceof PlanError)) return;
+      if (controller !== mine) return;
+      // Anything that is not a refusal from the Worker (a bug while reading the answer, say) counts as "no
+      // answer", so the panel never stays at "Searching...".
+      const failure = err instanceof PlanError ? err : new PlanError(null, null);
       // A refresh that fails keeps the connections on screen, marked as not refreshed.
       if (again && previous.kind === "plan") {
         outcome = { ...previous, refreshFailed: true };
       } else {
-        outcome = { kind: "failed", failure: planFailure(err.status, navigator.onLine), retryAfterS: err.retryAfterS };
+        outcome = { kind: "failed", failure: planFailure(failure.status, navigator.onLine), retryAfterS: failure.retryAfterS };
         b.announce.textContent = failureText(outcome.failure, outcome.retryAfterS);
       }
     } finally {
@@ -432,12 +481,15 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     for (const input of [b.from.input, b.to.input, b.date, b.time]) input.removeAttribute("aria-invalid");
     const from = b.from.station;
     const to = b.to.station;
+    if (locating) return refuse(t().routeLocating, b.from.input);
     if (!from) return refuse(t().routePickFrom, b.from.input);
     if (!to) return refuse(t().routePickTo, b.to.input);
     if (from.id === to.id) return refuse(t().routeSameStop, b.to.input);
 
     let ms = Date.now();
-    if (!b.isNow) {
+    if (b.isNow) {
+      fillNow(); // the form shows the time actually searched, not the one from when the panel opened
+    } else {
       const picked = fromBerlin(b.date.value, b.time.value);
       if (!picked) return refuse(t().routeBadTime, b.time);
       if (picked.ms < Date.now() - PLAN_PAST_MS || picked.ms > Date.now() + PLAN_AHEAD_MS) {
@@ -559,18 +611,27 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
 }
 
 // Wires one From/To field to the shared stop search (the same combobox as the header search).
-function attachStopSearchField(board: Board, field: Field, list: HTMLUListElement, onChange: () => void): void {
+// `onEdit`: the user typed in or picked for this field (before the change is applied).
+function attachStopSearchField(
+  board: Board,
+  field: Field,
+  list: HTMLUListElement,
+  onChange: () => void,
+  onEdit?: () => void,
+): void {
   attachStopSearch({
     input: field.input,
     list,
     board,
     clearOnEscape: false,
     onType() {
+      onEdit?.();
       field.station = null;
       field.input.removeAttribute("aria-invalid");
     },
     openOnFocus: () => field.station === null,
     onPick(station) {
+      onEdit?.();
       field.station = station;
       field.input.value = shortName(station.name);
       field.input.removeAttribute("aria-invalid");
@@ -637,14 +698,17 @@ function journeyOption(j: Journey, onOpen: () => void): HTMLElement {
   btn.type = "button";
   btn.addEventListener("click", onOpen);
   li.append(btn);
+  // Screen readers hear "21:46 bis 22:16, 30 min, RB26, 8 min Fußweg, 16, ab ...": the arrow and the "›"
+  // are hidden from them, a hidden word and commas take their place.
   const top = el("span", "route-times");
-  top.append(clock(j.depMs, j.schedDepMs), el("span", "route-arrow", "→"), clock(j.arrMs, j.schedArrMs));
-  top.append(el("span", "route-duration", durationText(j.arrMs - j.depMs)));
+  top.append(clock(j.depMs, j.schedDepMs), ...arrow(), clock(j.arrMs, j.schedArrMs));
+  top.append(srOnly(", "), el("span", "route-duration", durationText(journeyMinutes(j) * 60_000)));
   btn.append(top);
 
   const chain = el("span", "route-chain");
+  chain.append(srOnly(", "));
   j.legs.forEach((leg, i) => {
-    if (i > 0) chain.append(el("span", "route-sep", "›"));
+    if (i > 0) chain.append(hidden(el("span", "route-sep", "›")), srOnly(", "));
     chain.append(leg.kind === "walk" ? walkChip(leg.minutes) : lineBadge(leg));
   });
   btn.append(chain);
@@ -653,7 +717,8 @@ function journeyOption(j: Journey, onOpen: () => void): HTMLElement {
   const details: string[] = [];
   if (ride) details.push(t().routeFromStop([shortName(ride.from.name), ride.from.platform].filter(Boolean).join(" · ")));
   details.push(j.transfers ? t().routeTransfers(j.transfers) : t().routeDirect);
-  const info = el("span", "route-info", details.join(" · "));
+  const info = el("span", "route-info");
+  info.append(srOnly(", "), details.join(" · "));
   if (ride) {
     const state = delayState((ride.from.ms - ride.from.schedMs) / 1000, ride.realTime, j.cancelled);
     info.append(" · ", el("span", `state ${state.level}`, state.text));
@@ -668,18 +733,31 @@ function walkOption(j: Journey, onOpen: () => void): HTMLElement {
   btn.type = "button";
   btn.addEventListener("click", onOpen);
   li.append(btn);
-  // The walk's own minutes (rounded up from its seconds), so the time matches the chip below it.
   const leg = j.legs[0];
-  const minutes = leg?.kind === "walk" ? leg.minutes : Math.round((j.arrMs - j.depMs) / 60_000);
   const top = el("span", "route-times");
-  top.append(el("b", "", t().routeWalkAll), el("span", "route-duration", durationText(minutes * 60_000)));
+  top.append(el("b", "", t().routeWalkAll), srOnly(", "));
+  top.append(el("span", "route-duration", durationText(journeyMinutes(j) * 60_000)));
   btn.append(top);
   if (leg?.kind === "walk") {
     const chain = el("span", "route-chain");
-    chain.append(walkChip(leg.minutes));
+    chain.append(srOnly(", "), walkChip(leg.minutes));
     btn.append(chain);
   }
   return li;
+}
+
+// The "→" between two times: seen, but read as "bis" / "to".
+function arrow(): HTMLElement[] {
+  return [hidden(el("span", "route-arrow", "→")), srOnly(` ${t().routeUntil} `)];
+}
+
+function srOnly(text: string): HTMLElement {
+  return el("span", "sr-only", text);
+}
+
+function hidden(node: HTMLElement): HTMLElement {
+  node.setAttribute("aria-hidden", "true");
+  return node;
 }
 
 function clock(ms: number, schedMs: number): HTMLElement {
@@ -696,7 +774,8 @@ function clock(ms: number, schedMs: number): HTMLElement {
 function walkChip(minutes: number): HTMLElement {
   const chip = el("span", "route-walk");
   chip.insertAdjacentHTML("afterbegin", WALK_ICON);
-  chip.append(el("span", "", `${minutes}`), el("span", "sr-only", ` ${t().routeWalkMin(minutes)}`));
+  // The bare number is for the eye; screen readers get "8 min Fußweg" once.
+  chip.append(hidden(el("span", "", `${minutes}`)), srOnly(t().routeWalkMin(minutes)));
   return chip;
 }
 

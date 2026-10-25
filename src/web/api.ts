@@ -170,17 +170,28 @@ export async function fetchPlan(q: PlanRequest, signal?: AbortSignal): Promise<F
   try {
     res = await fetch(`/api/plan?${params.toString()}`, { signal });
   } catch (err) {
-    if (signal?.aborted && signal.reason instanceof DOMException && signal.reason.name === "AbortError") throw err;
-    throw new PlanError(null, null); // offline, or the time limit ran out
+    throw noAnswer(err, signal); // offline, or the time limit ran out
   }
   if (!res.ok) {
     const retry = Number(res.headers.get("Retry-After"));
     throw new PlanError(res.status, Number.isFinite(retry) && retry > 0 ? retry : null);
   }
   const fetchedHeader = res.headers.get("X-Fetched-At");
+  let data: PlanResponse;
+  try {
+    data = (await res.json()) as PlanResponse;
+  } catch (err) {
+    throw noAnswer(err, signal); // broken JSON, or the time limit ran out while the body was still loading
+  }
   return {
-    data: (await res.json()) as PlanResponse,
+    data,
     fetchedAtMs: fetchedHeader ? Date.parse(fetchedHeader) : Date.now(),
     cacheState: res.headers.get("X-Cache"),
   };
+}
+
+// A search the user cancelled stays a cancellation; anything else counts as "no usable answer".
+function noAnswer(err: unknown, signal: AbortSignal | undefined): unknown {
+  if (signal?.aborted && signal.reason instanceof DOMException && signal.reason.name === "AbortError") return err;
+  return new PlanError(null, null);
 }
