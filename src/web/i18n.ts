@@ -90,6 +90,11 @@ const de = {
   routeSwap: "Start und Ziel tauschen",
   routeUseLocation: "Mein Standort als Start",
   routeHere: "Mein Standort",
+  routeHereNote:
+    "Beim Suchen wird Ihr Standort an die Fahrplanauskunft gesendet, damit der Fußweg geplant werden kann. " +
+    "Wählen Sie eine Haltestelle, wenn er auf Ihrem Gerät bleiben soll.",
+  routeHereMore: "Mehr dazu",
+  routeHereRough: (pm: string) => `Standort ungenau (± ${pm}). Erneut versuchen oder eine Haltestelle wählen.`,
   routeDepart: "Abfahrt",
   routeArrive: "Ankunft",
   routeWhen: "Wann",
@@ -234,6 +239,11 @@ const en: typeof de = {
   routeSwap: "Swap start and destination",
   routeUseLocation: "My location as start",
   routeHere: "My location",
+  routeHereNote:
+    "Searching sends your location to the route service so the walk can be planned. " +
+    "Pick a stop instead to keep it on your device.",
+  routeHereMore: "More",
+  routeHereRough: (pm) => `Location is rough (± ${pm}). Try again or pick a stop.`,
   routeDepart: "Depart",
   routeArrive: "Arrive",
   routeWhen: "When",

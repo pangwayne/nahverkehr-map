@@ -40,6 +40,8 @@ import { PLAN_AHEAD_MS, PLAN_PAST_MS, isInArea } from "../worker/transitous";
 const FETCH_TIMEOUT_MS = 15_000;
 const TICK_MS = 10_000; // the age line counts up; nothing is fetched again by itself
 const STALE_AFTER_S = 120;
+// A fix less sure than this gets a warning (it still counts): the walk and the stop may then be wrong.
+const ROUGH_LOCATION_M = 300;
 const FIT_MAX_ZOOM = 16; // a short trip would otherwise zoom in so far that the map shows nothing around it
 
 export interface RoutePanel {
@@ -51,6 +53,7 @@ interface Here {
   here: true;
   lat: number;
   lon: number;
+  accuracyM: number; // how far off the phone says it may be
 }
 
 type Place = Station | Here;
@@ -68,7 +71,6 @@ type Outcome =
   | {
       kind: "plan";
       plan: Plan;
-      name: string;
       fetchedAtMs: number;
       refreshFailed: boolean;
       pageFailed: { failure: PlanFailure; retryAfterS: number | null } | null; // Earlier / Later failed: these connections stay, the buttons try again
@@ -137,7 +139,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
   // One connection in full, and drawn on the map. `fit`: also move the map to show all of it.
   function showDetails(j: Journey, fit = true): void {
     detail = j;
-    const title = outcome.kind === "plan" ? outcome.name : routeName();
+    const title = outcome.kind === "plan" && lastSearch ? searchName(lastSearch) : routeName();
     renderPanel(user, title, detailNodes(j));
     journeyMap.show(j);
     if (fit) {
@@ -260,6 +262,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       const aText = fromState.input.value;
       setField(fromState, toState.place, toState.input.value);
       setField(toState, a, aText);
+      renderHere();
     });
     to.row.append(swap);
 
@@ -300,13 +303,17 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     moment.append(dateLabel, date, timeLabel, time, now);
     when.append(legend, modes, moment);
 
+    // While My location is in a field: that searching sends it, and a warning when the fix is rough.
+    const hereNote = el("p", "route-here");
+    hereNote.setAttribute("aria-live", "polite");
+
     const error = el("p", "route-error");
     error.id = "route-error";
     error.setAttribute("aria-live", "polite");
 
     const submit = el("button", "route-submit") as HTMLButtonElement;
     submit.type = "submit";
-    form.append(from.wrap, to.wrap, when, error, submit);
+    form.append(from.wrap, to.wrap, hereNote, when, error, submit);
     form.addEventListener("submit", (e) => {
       e.preventDefault();
       void search(null);
@@ -340,6 +347,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       timeLabel,
       now,
       error,
+      hereNote,
       submit,
       isNow: true,
     };
@@ -351,6 +359,8 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     // Typing or picking a start ends a pending location lookup: the user's choice wins.
     attachStopSearchField(board, fromState, from.list, picked, () => cancelLocate(false));
     attachStopSearchField(board, toState, to.list, picked);
+    // After the stop search has cleared the field's place (typing replaces My location).
+    for (const input of [from.input, to.input]) input.addEventListener("input", () => renderHere());
     return state;
   }
 
@@ -408,7 +418,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       const { latitude: lat, longitude: lon } = pos.coords;
       releaseLocate();
       if (isInArea(lat, lon)) {
-        setField(b.from, { here: true, lat, lon }, t().routeHere);
+        setField(b.from, { here: true, lat, lon, accuracyM: pos.coords.accuracy }, t().routeHere);
         fieldError = null;
         render();
       } else {
@@ -477,10 +487,9 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       const request = checkForm();
       if (!request) return;
       // checkForm only passes with both stops picked
-      submitted = { request, isNow: b.isNow, from: placeName(b.from.place!), to: placeName(b.to.place!) };
+      submitted = { request, isNow: b.isNow, from: stopName(b.from.place!), to: stopName(b.to.place!) };
     }
     const { request } = submitted;
-    const name = `${submitted.from} → ${submitted.to}`;
     const fromForm = cursor === null && !again;
 
     controller?.abort();
@@ -500,7 +509,6 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       outcome = {
         kind: "plan",
         plan: parsePlan(res.data),
-        name,
         fetchedAtMs: res.fetchedAtMs,
         refreshFailed: isStale(res),
         pageFailed: null,
@@ -582,7 +590,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
   }
 
   function placeName(p: Place): string {
-    return isHere(p) ? t().routeHere : shortName(p.name);
+    return endName(stopName(p));
   }
 
   function applyTexts(): void {
@@ -617,12 +625,32 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     b.results.setAttribute("aria-busy", String(searching));
 
     renderFold();
+    renderHere();
 
     // Focus inside the results (Earlier, Later, Refresh) comes back after the redraw.
     const key = focusedKey(b.body);
     b.body.replaceChildren(...resultNodes());
     if (key) refocus(b.body, key);
     renderStatus();
+  }
+
+  function renderHere(): void {
+    if (!built) return;
+    const b = built;
+    const here = [b.from.place, b.to.place].find(isHere);
+    if (!here) {
+      b.hereNote.replaceChildren();
+      return;
+    }
+    const x = t();
+    const more = el("a", "", x.routeHereMore) as HTMLAnchorElement;
+    more.href = `${x.privacyUrl}#location`;
+    more.target = "_blank";
+    more.rel = "noopener";
+    b.hereNote.replaceChildren(x.routeHereNote, " ", more);
+    if (here.accuracyM > ROUGH_LOCATION_M) {
+      b.hereNote.prepend(el("strong", "route-rough", x.routeHereRough(distanceText(here.accuracyM))), " ");
+    }
   }
 
   // The summary button shows while connections are on screen; the form hides behind it when folded. It
@@ -637,7 +665,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     if (!lastSearch) return;
     const s = lastSearch;
     const text = el("span", "route-fold-text");
-    text.append(el("b", "", s.from), " ", ...arrow(), " ", el("b", "", s.to), ` · ${whenText(s)}`);
+    text.append(el("b", "", endName(s.from)), " ", ...arrow(), " ", el("b", "", endName(s.to)), ` · ${whenText(s)}`);
     b.fold.replaceChildren(text, el("span", "route-fold-action", hide ? t().routeEdit : t().routeFoldHide));
   }
 
@@ -688,7 +716,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
 
   // Status line and the age line under the connections or details (fresh: green; old or not refreshed: red).
   function renderStatus(): void {
-    const title = outcome.kind === "plan" ? outcome.name : routeName();
+    const title = outcome.kind === "plan" && lastSearch ? searchName(lastSearch) : routeName();
     if (outcome.kind === "plan") {
       const ageS = Math.max(0, (Date.now() - outcome.fetchedAtMs) / 1000);
       const old = ageS > STALE_AFTER_S;
@@ -851,6 +879,18 @@ function walkOption(j: Journey, onOpen: () => void): HTMLElement {
 }
 
 // When a submitted search leaves or arrives, for the folded summary: "jetzt", "ab 21:39", "an 26. Okt. 08:15".
+// "450 m", "1.2 km" ("1,2 km" in German).
+function distanceText(m: number): string {
+  if (m < 1000) return `${Math.max(10, Math.round(m / 10) * 10)} m`;
+  const km = (m / 1000).toFixed(1);
+  return `${getLang() === "de" ? km.replace(".", ",") : km} km`;
+}
+
+// A submitted search's ends keep My location as null, so its name follows a language switch.
+const stopName = (p: Place): string | null => (isHere(p) ? null : shortName(p.name));
+const endName = (name: string | null): string => name ?? t().routeHere;
+const searchName = (s: SubmittedSearch): string => `${endName(s.from)} → ${endName(s.to)}`;
+
 function whenText(s: SubmittedSearch): string {
   if (s.isNow) return t().routeFoldNow;
   const ms = Date.parse(s.request.time);

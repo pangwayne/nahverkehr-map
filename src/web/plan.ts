@@ -122,18 +122,20 @@ function toLeg(leg: PlanLeg, previous: JourneyLeg | undefined): JourneyLeg {
 
 const isRide = (leg: PlanLeg | undefined): boolean => leg !== undefined && leg.mode !== "WALK";
 
-// After a ride was moved to its (later) timetable times, the walks behind it move along with it. A ride that
-// then leaves before the leg in front of it has ended cannot be caught: false, the journey no longer works.
-// The other rides keep their own times; only Transitous knows those.
+// After a ride was moved to its (later) timetable times, the walks behind it move along with it, each taking
+// at least its own walking time (its clock times are whole minutes and can be shorter: 119 s shown as 1 min).
+// A ride that then leaves before the leg in front of it has ended cannot be caught: false, the journey no
+// longer works. The other rides keep their own times; only Transitous knows those.
+// `legs` includes the short walks the panel leaves out: they take time too.
 function retime(legs: JourneyLeg[]): boolean {
   for (let i = 1; i < legs.length; i++) {
     const leg = legs[i]!;
     const endMs = legs[i - 1]!.to.ms;
     if (leg.from.ms >= endMs) continue;
     if (leg.kind === "ride") return false;
-    const shift = endMs - leg.from.ms;
-    leg.from.ms += shift;
-    leg.to.ms += shift;
+    const spanMs = Math.max(leg.to.ms - leg.from.ms, leg.minutes * 60_000);
+    leg.from.ms = endMs;
+    leg.to.ms = endMs + spanMs;
   }
   return true;
 }
@@ -143,17 +145,19 @@ function retime(legs: JourneyLeg[]): boolean {
 export function toJourney(it: PlanItinerary): Journey | null {
   if (it.legs.some((l) => isHiddenMode(l.mode))) return null;
   const legs: JourneyLeg[] = [];
+  const all: JourneyLeg[] = []; // `legs` plus the tiny walks left out, for retime
   let corrected = false; // a ride's live times were thrown out for the timetable (toLeg)
   it.legs.forEach((raw, i) => {
     const leg = toLeg(raw, legs[legs.length - 1]);
     if (leg.kind === "ride" && raw.realTime && !leg.realTime) corrected = true;
+    all.push(leg);
     // A tiny walk between two rides says nothing. A walk at the start or end stays, however short: it
     // leads to or from the stops that were asked for (and a walk-only journey keeps its walk).
     const betweenRides = isRide(it.legs[i - 1]) && isRide(it.legs[i + 1]);
     if (leg.kind === "walk" && raw.duration < SHORT_WALK_S && betweenRides) return;
     legs.push(leg);
   });
-  if (corrected && !retime(legs)) return null;
+  if (corrected && !retime(all)) return null;
   const first = legs[0];
   const last = legs[legs.length - 1];
   if (!first || !last) return null;
@@ -233,8 +237,8 @@ export const isPosition = (s: LegStop): boolean => s.stopId === null;
 export interface SubmittedSearch {
   request: PlanRequest;
   isNow: boolean; // searched with "Now": a refresh searches from the new now
-  from: string; // names as shown ("Bonn Hbf", "K-Neumarkt", "Mein Standort")
-  to: string;
+  from: string | null; // stop names as shown ("Bonn Hbf", "K-Neumarkt"); null: My location, named in the
+  to: string | null; // language shown at the time
 }
 
 // What Refresh sends: a "Now" search from the current minute (first page again); a search for a chosen

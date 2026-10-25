@@ -1164,6 +1164,24 @@ html[lang="en"] .flag-en {
   color: var(--ink-soft);
 }
 
+.route-here {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.route-here:empty {
+  display: none;
+}
+
+.route-here a {
+  color: var(--accent);
+}
+
+.route-rough {
+  color: var(--late);
+}
+
 .route-submit {
   height: 44px;
   border: 0;
