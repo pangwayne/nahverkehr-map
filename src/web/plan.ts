@@ -219,11 +219,21 @@ export function journeyMinutes(j: Journey): number {
   return only?.kind === "walk" ? only.minutes : Math.round((j.arrMs - j.depMs) / 60_000);
 }
 
+// "My location" as a route search end: "lat,lon", the form Transitous and the Worker take. Six decimals are
+// about 10 cm, finer than any phone's fix, so this sends the position as the phone found it.
+export function positionPlace(lat: number, lon: number): string {
+  return `${lat.toFixed(6)},${lon.toFixed(6)}`;
+}
+
+// A journey end at a position (My location) rather than a stop. Transitous names it "START" or "END" and gives
+// it no stop ID; the panel and the map show their own name for it instead.
+export const isPosition = (s: LegStop): boolean => s.stopId === null;
+
 // The search whose answer is on screen, kept apart from the form (which may hold unsent edits).
 export interface SubmittedSearch {
   request: PlanRequest;
   isNow: boolean; // searched with "Now": a refresh searches from the new now
-  from: string; // stop names as shown ("Bonn Hbf", "K-Neumarkt")
+  from: string; // names as shown ("Bonn Hbf", "K-Neumarkt", "Mein Standort")
   to: string;
 }
 

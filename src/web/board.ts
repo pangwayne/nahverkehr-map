@@ -1,7 +1,8 @@
 // Stops on the map plus the departure board: tap a stop, or press "My location".
 // While a board is open, the lines on it are drawn faintly on the map (stoplines.ts).
 // Tapping a departure opens its trip card (route and vehicle on the map).
-// The user's location stays on the phone: only stop IDs are ever sent to the Worker.
+// The user's location stays on the phone here: only stop IDs are ever sent to the Worker. (The route panel's
+// "My location as start" is the one place a position is sent, and only with a search.)
 
 import type { FeatureCollection } from "geojson";
 import * as maplibregl from "maplibre-gl";

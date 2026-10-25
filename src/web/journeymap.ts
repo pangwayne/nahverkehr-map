@@ -4,7 +4,8 @@
 
 import type { FeatureCollection } from "geojson";
 import type * as maplibregl from "maplibre-gl";
-import type { Journey } from "./plan";
+import { t } from "./i18n";
+import { type Journey, type LegStop, isPosition } from "./plan";
 import { shortName } from "./names";
 
 const LEGS_SOURCE = "journey-legs";
@@ -60,19 +61,19 @@ export function journeyGeoJSON(j: Journey | null): { legs: FeatureCollection; po
   const first = j.legs[0];
   const last = j.legs[j.legs.length - 1];
   if (first && last) {
-    const point = (lon: number, lat: number, kind: "start" | "change" | "end", name: string) =>
+    const point = (s: LegStop, kind: "start" | "change" | "end") =>
       points.features.push({
         type: "Feature",
-        geometry: { type: "Point", coordinates: [lon, lat] },
-        properties: { kind, label: shortName(name) },
+        geometry: { type: "Point", coordinates: [s.lon, s.lat] },
+        properties: { kind, label: isPosition(s) ? t().routeHere : shortName(s.name) },
       });
-    point(first.from.lon, first.from.lat, "start", first.from.name);
+    point(first.from, "start");
     // Where one ride ends and the next begins (walks in between included), once per place.
     for (let i = 1; i < j.legs.length; i++) {
       const leg = j.legs[i]!;
-      if (leg.kind === "ride" && !leg.staySeated) point(leg.from.lon, leg.from.lat, "change", leg.from.name);
+      if (leg.kind === "ride" && !leg.staySeated) point(leg.from, "change");
     }
-    point(last.to.lon, last.to.lat, "end", last.to.name);
+    point(last.to, "end");
   }
   return { legs, points };
 }

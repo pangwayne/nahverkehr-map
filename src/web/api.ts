@@ -152,7 +152,7 @@ export function fetchTrip(tripId: string, signal?: AbortSignal): Promise<Fetched
 
 // What the route panel asks for; the Worker checks every field again (src/worker/transitous.ts).
 export interface PlanRequest {
-  from: string; // stop IDs
+  from: string; // stop IDs, or one position for "My location" (positionPlace in plan.ts)
   to: string;
   time: string; // "2026-10-24T17:00Z"
   arriveBy: boolean;

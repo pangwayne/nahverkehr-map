@@ -41,7 +41,7 @@
       <p>
         Wenn Sie die App aufrufen, sendet Ihr Browser technische Daten an meinen Hosting-Anbieter Cloudflare: Ihre
         IP-Adresse, Datum und Uhrzeit, die aufgerufene Adresse (zum Beispiel die Abfahrten welcher Haltestelle oder
-        Start, Ziel und Zeit einer Routensuche), die zuvor besuchte Seite sowie Browser und Betriebssystem. Cloudflare nutzt diese Daten, um die App
+        Start, Ziel und Zeit einer Routensuche, gegebenenfalls mit Ihrer Position, Abschnitt 5), die zuvor besuchte Seite sowie Browser und Betriebssystem. Cloudflare nutzt diese Daten, um die App
         auszuliefern und vor Angriffen zu schützen. Das Foto in der Kopfzeile stammt von meiner Website
         www.pangwayne.com, die ebenfalls bei Cloudflare liegt; dort gilt dasselbe.
       </p>
@@ -123,13 +123,13 @@
       <h2>5. „Mein Standort“</h2>
       <p>
         Die Nutzung Ihres Standorts ist freiwillig. Die App liest ihn nur, wenn Sie auf <strong>Mein Standort</strong>
-        oder in der Routensuche auf die Standort-Taste neben „Von“ (<strong>Nächste Haltestelle als Start</strong>) tippen,
+        oder in der Routensuche auf die Standort-Taste neben „Von“ (<strong>Mein Standort als Start</strong>) tippen,
         einmal pro Tippen; sie verfolgt Ihren Standort nicht. Beim ersten Mal fragt Ihr Browser, ob die App
         Ihren Standort verwenden darf; haben Sie das früher schon erlaubt, fragt der Browser eventuell nicht erneut.
       </p>
       <p>
-        Ihre genaue Position wird nur auf Ihrem Gerät verwendet, um die nächsten Haltestellen zu finden und sie als
-        roten Punkt auf der Karte zu zeigen. Der Punkt bleibt, bis Sie erneut tippen oder die Seite neu laden; die
+        Bei <strong>Mein Standort</strong> wird Ihre genaue Position nur auf Ihrem Gerät verwendet, um die nächsten
+        Haltestellen zu finden und sie als roten Punkt auf der Karte zu zeigen. Der Punkt bleibt, bis Sie erneut tippen oder die Seite neu laden; die
         Position wird nur in der geöffneten Seite gehalten und nicht gespeichert. Sie wird weder an mich noch an
         andere übermittelt. Zwei Dinge können aber ungefähr zeigen, wo Sie sind:
       </p>
@@ -144,13 +144,20 @@
         </li>
       </ul>
       <p>
-        In der Routensuche trägt die Taste nur die nächstgelegene Haltestelle als Start ein; die Karte bewegt sich
-        nicht und es wird nichts geladen, bis Sie suchen. Mit der Suche wird dann nur diese Haltestelle übermittelt
-        (Abschnitt 6).
+        <strong>In der Routensuche ist das anders:</strong> Die Taste trägt Ihre Position selbst als Start ein
+        („Mein Standort“), damit die Verbindungen den Fußweg von Ihrem Standort zur besten Haltestelle enthalten
+        können. Die Karte bewegt sich nicht, und während Sie das Formular ausfüllen, wird nichts gesendet. Wenn Sie
+        suchen, wird Ihre genaue Position, so wie Ihr Gerät sie ermittelt hat, mit der Suche an meinen Server und
+        von dort an Transitous übermittelt (Abschnitt 6). Transitous erhält sie ohne Ihre IP-Adresse. „Früher“,
+        „Später“ und „Aktualisieren“ senden dieselbe Position erneut; sie wird nicht im Hintergrund aktualisiert.
+        Wie jede Suche gehört sie zu den technischen Daten und Fehlerprotokollen bei Cloudflare (Abschnitt 2, nach
+        3 Tagen gelöscht), und mein Server hält die Antwort bis zu zwei Minuten bereit. Wenn Sie Ihre Position
+        nicht teilen möchten, tippen oder wählen Sie stattdessen eine Start-Haltestelle.
       </p>
       <p>
         <strong>Rechtsgrundlage:</strong> Ihre Einwilligung, die Sie durch Tippen auf eine dieser Tasten und Erlauben des
-        Standortzugriffs erteilen (Art. 6 Abs. 1 lit. a DSGVO, § 25 Abs. 1 TDDDG). Sie können sie jederzeit
+        Standortzugriffs erteilen, in der Routensuche außerdem durch das Starten der Suche mit Mein Standort
+        (Art. 6 Abs. 1 lit. a DSGVO, § 25 Abs. 1 TDDDG). Sie können sie jederzeit
         widerrufen, indem Sie die Standortberechtigung für diese Seite in Ihren Browser-Einstellungen entfernen;
         das berührt nicht, was vorher geschehen ist. Ohne Standort können Sie die App weiter nutzen, indem Sie
         Haltestellen suchen oder auf der Karte antippen.
@@ -160,7 +167,8 @@
       <p>
         Fahrpläne, Live-Abfahrten und Verbindungen stammen von <a href="https://transitous.org/">Transitous</a>.
         Mein Server ruft sie stellvertretend für Sie ab; Transitous erhält daher nur, was es für die Antwort braucht
-        (welche Haltestelle, welche Fahrt oder Start, Ziel und Zeit einer Routensuche), aber weder Ihre IP-Adresse
+        (welche Haltestelle, welche Fahrt oder Start, Ziel und Zeit einer Routensuche, gegebenenfalls mit Ihrer
+        Position, siehe Abschnitt 5), aber weder Ihre IP-Adresse
         noch andere Daten über Sie.
       </p>
       <p>
@@ -170,8 +178,8 @@
         Routensuche.
       </p>
       <p>
-        <strong>Routensuche:</strong> Wenn Sie auf „Verbindungen suchen“ tippen, sendet die App die gewählte Start- und
-        Ziel-Haltestelle, Datum und Uhrzeit sowie, ob Sie dann abfahren oder ankommen möchten, an meinen Server, der
+        <strong>Routensuche:</strong> Wenn Sie auf „Verbindungen suchen“ tippen, sendet die App den gewählten Start und das
+        Ziel (Haltestellen oder Ihre Position bei Mein Standort, Abschnitt 5), Datum und Uhrzeit sowie, ob Sie dann abfahren oder ankommen möchten, an meinen Server, der
         bei Transitous nach Verbindungen fragt. „Früher“, „Später“ und „Aktualisieren“ senden dieselbe Suche erneut.
         Während Sie das Formular ausfüllen, wird nichts gesendet. Ich speichere Ihre Suchen nicht, und die App führt
         keinen Suchverlauf; die Antwort wird nur in der geöffneten Seite angezeigt. Wie jede Anfrage gehört die Suche

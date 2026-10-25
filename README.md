@@ -48,9 +48,9 @@ The tests are kept outside this repository, so `npm test` does not run in a fres
   spellings without umlauts and a few English names ("koeln hbf", "cologne main station").
 - **Map view:** a reload opens the map where you left it (kept in that browser tab only, until it is closed).
 - **Location:** "Mein Standort" (My location) finds the closest stops on your device and marks your position with a red dot; the position is not sent anywhere.
-- **Route search:** pick a start and a destination stop (or use your location as the start: the closest
-  stop is picked on your device) and a time. Only the two stops and the time are sent, and only when you
-  press the button. Up to 5 connections (trams, buses, S-Bahn and regional trains, no IC/ICE) with live
+- **Route search:** pick a start and a destination stop (or use your location as the start: the connections
+  then include the walk from where you are to the best stop) and a time. Only the two ends and the time are
+  sent, and only when you press the button; with your location as the start, that includes your position. Up to 5 connections (trams, buses, S-Bahn and regional trains, no IC/ICE) with live
   delays, earlier and later ones, the details of each and the connection drawn on the map; any ride opens
   its trip card. Searches are not stored.
 

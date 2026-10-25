@@ -7,8 +7,13 @@ export const USER_AGENT = "nahverkehr-map/0.1.0 (+https://nahverkehr.pangwayne.c
 
 // Stop area: Bonn (Bad Godesberg) up to Düsseldorf (Ratingen), Neuss to Wuppertal.
 // Transitous wants min = lower-right, max = upper-left, both "lat,lon".
-export const AREA_MIN = "50.63,7.22";
-export const AREA_MAX = "51.36,6.68";
+export const AREA = { south: 50.63, north: 51.36, west: 6.68, east: 7.22 };
+export const AREA_MIN = `${AREA.south},${AREA.east}`;
+export const AREA_MAX = `${AREA.north},${AREA.west}`;
+
+export function isInArea(lat: number, lon: number): boolean {
+  return lat >= AREA.south && lat <= AREA.north && lon >= AREA.west && lon <= AREA.east;
+}
 
 // Part of the stops cache key: change it whenever the area changes, so the old list is not served.
 export const AREA_VERSION = "rheinland-1";
@@ -44,6 +49,15 @@ export function isValidTripId(tripId: string): boolean {
   return TRIP_ID_PATTERN.test(tripId);
 }
 
+// A position as a route search end: "lat,lon" with up to 6 decimals (as the browser sends it), inside the stop
+// area. The area check keeps the Worker from planning routes anywhere in Europe for anyone.
+const POSITION_PATTERN = /^(\d{2}\.\d{1,6}),(\d{1,2}\.\d{1,6})$/;
+
+export function isValidPosition(place: string): boolean {
+  const match = POSITION_PATTERN.exec(place);
+  return match !== null && isInArea(Number(match[1]), Number(match[2]));
+}
+
 // The whole trip as one itinerary: every stop with times, plus its track line (precision 6).
 export function buildTripUrl(tripId: string): string {
   const params = new URLSearchParams({ tripId });
@@ -63,8 +77,8 @@ export function buildDeparturesUrl(stopId: string): string {
 
 // Route search. The browser chooses only these fields; everything else sent to Transitous is fixed here.
 export interface PlanQuery {
-  from: string; // stop ID
-  to: string; // stop ID
+  from: string; // stop ID, or a position ("50.7300,7.0960") for "My location"
+  to: string; // the same; at most one of the two is a position
   time: string; // "2026-10-24T17:00Z", UTC, whole minutes
   arriveBy: boolean; // true: arrive by `time`; false: leave at `time`
   cursor: string | null; // "LATER|1792863900" from an earlier answer, for earlier/later options
@@ -87,7 +101,8 @@ const PLAN_TIME_PATTERN = /^20\d{2}-[01]\d-[0-3]\dT[0-2]\d:[0-5]\dZ$/;
 const PLAN_CURSOR_PATTERN = /^(EARLIER|LATER)\|(\d{10})$/;
 
 // The checked search, or null if any field is missing, malformed, a date that does not exist,
-// outside the allowed time window, or from and to are the same stop.
+// outside the allowed time window, or from and to are the same stop. One end may be a position in the area;
+// two positions are refused (that is a walk, not a transit question, and a route search between any two points).
 // With a page cursor the cursor's time decides (it wins over `time` upstream), so an old open tab can still
 // page; `time` is then only checked for its form (it is part of the cache key).
 export function parsePlanQuery(params: URLSearchParams, nowMs: number): PlanQuery | null {
@@ -96,7 +111,10 @@ export function parsePlanQuery(params: URLSearchParams, nowMs: number): PlanQuer
   const time = params.get("time") ?? "";
   const arriveBy = params.get("arriveBy") ?? "0";
   const cursor = params.get("cursor");
-  if (!isValidStopId(from) || !isValidStopId(to) || from === to) return null;
+  const fromStop = isValidStopId(from);
+  const toStop = isValidStopId(to);
+  if (!(fromStop || isValidPosition(from)) || !(toStop || isValidPosition(to))) return null;
+  if ((!fromStop && !toStop) || from === to) return null;
   if (!PLAN_TIME_PATTERN.test(time)) return null;
   const ms = Date.parse(time);
   // "2026-02-30T10:00Z" parses as 2 March: the round trip catches dates that do not exist.

@@ -1,7 +1,8 @@
 // The route panel: pick a start and a destination stop and a time, then see up to 5 connections, open one
 // to see its details and draw it on the map, and follow any ride in its trip card.
 // Light on Transitous: a search runs only when the button is pressed, one at a time, never by itself.
-// Only stop IDs and the time leave the phone; the location button picks the nearest stop on the phone.
+// Stop IDs and the time leave the phone, and with the location button (My location as start) the phone's
+// position too, as one end of the search: Transitous then plans the walk to the best stop.
 
 import type * as maplibregl from "maplibre-gl";
 import { type PlanRequest, PlanError, fetchPlan, isStale } from "./api";
@@ -22,31 +23,43 @@ import {
   type SubmittedSearch,
   durationText,
   firstRide,
+  isPosition,
   journeyMinutes,
   journeyPath,
   parsePlan,
   planFailure,
+  positionPlace,
   refreshRequest,
 } from "./plan";
 import { ageText, resetStatus, setStatus, setStatusNote, setStatusTitle } from "./status";
 import { attachStopSearch } from "./stopsearch";
-import { type Station, nearestStations } from "./stops";
+import type { Station } from "./stops";
 import type { TripRef } from "./tripcard";
-import { PLAN_AHEAD_MS, PLAN_PAST_MS } from "../worker/transitous";
+import { PLAN_AHEAD_MS, PLAN_PAST_MS, isInArea } from "../worker/transitous";
 
 const FETCH_TIMEOUT_MS = 15_000;
 const TICK_MS = 10_000; // the age line counts up; nothing is fetched again by itself
 const STALE_AFTER_S = 120;
-const LOCATION_RADIUS_M = 2000;
 const FIT_MAX_ZOOM = 16; // a short trip would otherwise zoom in so far that the map shows nothing around it
 
 export interface RoutePanel {
   open(ends?: { from?: Station; to?: Station }): void;
 }
 
+// "My location": the phone's position as one end of a search, sent as it is (see positionPlace).
+interface Here {
+  here: true;
+  lat: number;
+  lon: number;
+}
+
+type Place = Station | Here;
+
+const isHere = (p: Place | null): p is Here => p !== null && "here" in p;
+
 interface Field {
   input: HTMLInputElement;
-  station: Station | null; // picked from the list; typing afterwards clears it
+  place: Place | null; // a stop picked from the list, or My location; typing afterwards clears it
 }
 
 type Outcome =
@@ -79,7 +92,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
   let timeNote: string | null = null; // "this time happens twice" and the like
   let fieldError: string | null = null;
   let locateSeq = 0; // number of the latest location lookup; an older one's answer is ignored
-  let locating: { station: Station | null; text: string } | null = null; // a lookup is pending: From as it was
+  let locating: { place: Place | null; text: string } | null = null; // a lookup is pending: From as it was
 
   onLangChange(() => {
     if (!built) return;
@@ -179,7 +192,8 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       const icon = el("span", "route-walk");
       icon.insertAdjacentHTML("afterbegin", WALK_ICON);
       li.append(icon, el("span", "", t().routeWalkMin(leg.minutes)));
-      if (last) li.append(el("span", "journey-to", t().routeWalkTo(shortName(leg.to.name))));
+      const to = isPosition(leg.to) ? t().routeHere : shortName(leg.to.name);
+      if (last) li.append(el("span", "journey-to", t().routeWalkTo(to)));
       return li;
     }
     const li = el("li", leg.cancelled || cancelled ? "journey-leg ride cancelled" : "journey-leg ride");
@@ -233,8 +247,8 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
 
     const from = stopField("route-from");
     const to = stopField("route-to");
-    const fromState: Field = { input: from.input, station: null };
-    const toState: Field = { input: to.input, station: null };
+    const fromState: Field = { input: from.input, place: null };
+    const toState: Field = { input: to.input, place: null };
 
     const locate = iconButton("route-locate", LOCATE_ICON);
     locate.addEventListener("click", () => void useLocation());
@@ -242,9 +256,9 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     const swap = iconButton("route-swap", SWAP_ICON);
     swap.addEventListener("click", () => {
       cancelLocate(true);
-      const a = fromState.station;
+      const a = fromState.place;
       const aText = fromState.input.value;
-      setField(fromState, toState.station, toState.input.value);
+      setField(fromState, toState.place, toState.input.value);
       setField(toState, a, aText);
     });
     to.row.append(swap);
@@ -344,8 +358,8 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     setField(field, station, shortName(station.name));
   }
 
-  function setField(field: Field, station: Station | null, text: string): void {
-    field.station = station;
+  function setField(field: Field, place: Place | null, text: string): void {
+    field.place = place;
     field.input.value = text;
     field.input.removeAttribute("aria-invalid");
   }
@@ -364,10 +378,10 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     built.date.max = berlinDateTime(Date.now() + PLAN_AHEAD_MS).date;
   }
 
-  // The nearest stop as the start. While the position is being found, From is empty and holds no stop, so a
-  // search cannot go out with the old start. Each lookup has a number: when the user moves on (types or picks
-  // a start, swaps, closes the panel, opens it from a board), the lookup is cancelled, and its late answer
-  // changes nothing.
+  // The phone's position as the start: Transitous then plans the walk to whichever stop works best. While the
+  // position is being found, From is empty and holds nothing, so a search cannot go out with the old start.
+  // Each lookup has a number: when the user moves on (types or picks a start, swaps, closes the panel, opens
+  // it from a board), the lookup is cancelled, and its late answer changes nothing.
   async function useLocation(): Promise<void> {
     const b = built!;
     if (!window.isSecureContext || !("geolocation" in navigator)) {
@@ -376,7 +390,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     }
     cancelLocate(false);
     const mine = ++locateSeq;
-    locating = { station: b.from.station, text: b.from.input.value };
+    locating = { place: b.from.place, text: b.from.input.value };
     const before = locating;
     b.locate.disabled = true;
     setField(b.from, null, "");
@@ -391,23 +405,20 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
         }),
       );
       if (!current()) return;
-      await board.stationsReady;
-      if (!current()) return;
-      const near = nearestStations(board.stations(), pos.coords.longitude, pos.coords.latitude, LOCATION_RADIUS_M, 1);
-      const station = near[0]?.station;
+      const { latitude: lat, longitude: lon } = pos.coords;
       releaseLocate();
-      if (station) {
-        pick(b.from, station);
+      if (isInArea(lat, lon)) {
+        setField(b.from, { here: true, lat, lon }, t().routeHere);
         fieldError = null;
         render();
       } else {
-        setField(b.from, before.station, before.text);
-        showFieldError(t().routeNoStopNear, b.from.input);
+        setField(b.from, before.place, before.text);
+        showFieldError(t().routeOutsideArea, b.from.input);
       }
     } catch (err) {
       if (!current()) return;
       releaseLocate();
-      setField(b.from, before.station, before.text);
+      setField(b.from, before.place, before.text);
       const denied = (err as GeolocationPositionError).code === 1;
       showFieldError(denied ? t().routeLocationDenied : t().routeLocationFailed, b.from.input);
     }
@@ -428,7 +439,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     const before = locating;
     locateSeq++;
     releaseLocate();
-    if (restore) setField(built.from, before.station, before.text);
+    if (restore) setField(built.from, before.place, before.text);
   }
 
   // Always null, so a check can say `return refuse(...)`.
@@ -466,7 +477,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       const request = checkForm();
       if (!request) return;
       // checkForm only passes with both stops picked
-      submitted = { request, isNow: b.isNow, from: shortName(b.from.station!.name), to: shortName(b.to.station!.name) };
+      submitted = { request, isNow: b.isNow, from: placeName(b.from.place!), to: placeName(b.to.place!) };
     }
     const { request } = submitted;
     const name = `${submitted.from} → ${submitted.to}`;
@@ -541,12 +552,14 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     timeNote = null;
     setDateBounds(); // the panel may have stayed open past midnight
     for (const input of [b.from.input, b.to.input, b.date, b.time]) input.removeAttribute("aria-invalid");
-    const from = b.from.station;
-    const to = b.to.station;
+    const from = b.from.place;
+    const to = b.to.place;
     if (locating) return refuse(t().routeLocating, b.from.input);
     if (!from) return refuse(t().routePickFrom, b.from.input);
     if (!to) return refuse(t().routePickTo, b.to.input);
-    if (from.id === to.id) return refuse(t().routeSameStop, b.to.input);
+    // My location at both ends is the same place too (the Worker takes a position at one end only).
+    const same = isHere(from) || isHere(to) ? isHere(from) && isHere(to) : from.id === to.id;
+    if (same) return refuse(t().routeSameStop, b.to.input);
 
     let ms = Date.now();
     if (b.isNow) {
@@ -561,7 +574,15 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       if (picked.note === "twice") timeNote = t().routeTimeTwice;
       if (picked.note === "skipped") timeNote = t().routeTimeSkipped(berlinDateTime(ms).time);
     }
-    return { from: from.planStopId, to: to.planStopId, time: planTime(ms), arriveBy: b.arrive.input.checked, cursor: null };
+    return { from: placeParam(from), to: placeParam(to), time: planTime(ms), arriveBy: b.arrive.input.checked, cursor: null };
+  }
+
+  function placeParam(p: Place): string {
+    return isHere(p) ? positionPlace(p.lat, p.lon) : p.planStopId;
+  }
+
+  function placeName(p: Place): string {
+    return isHere(p) ? t().routeHere : shortName(p.name);
   }
 
   function applyTexts(): void {
@@ -581,6 +602,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     b.dateLabel.textContent = x.routeDate;
     b.timeLabel.textContent = x.routeTime;
     b.now.textContent = x.routeNow;
+    for (const field of [b.from, b.to]) if (isHere(field.place)) field.input.value = x.routeHere;
   }
 
   function render(): void {
@@ -684,9 +706,9 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
 
   function routeName(): string {
     const b = built!;
-    const from = b.from.station;
-    const to = b.to.station;
-    return from && to ? `${shortName(from.name)} → ${shortName(to.name)}` : t().routeTitle;
+    const from = b.from.place;
+    const to = b.to.place;
+    return from && to ? `${placeName(from)} → ${placeName(to)}` : t().routeTitle;
   }
 
   return { open };
@@ -708,13 +730,13 @@ function attachStopSearchField(
     clearOnEscape: false,
     onType() {
       onEdit?.();
-      field.station = null;
+      field.place = null;
       field.input.removeAttribute("aria-invalid");
     },
-    openOnFocus: () => field.station === null,
+    openOnFocus: () => field.place === null,
     onPick(station) {
       onEdit?.();
-      field.station = station;
+      field.place = station;
       field.input.value = shortName(station.name);
       field.input.removeAttribute("aria-invalid");
       onChange();

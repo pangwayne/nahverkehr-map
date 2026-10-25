@@ -40,8 +40,8 @@
       <h2>2. Visiting this app</h2>
       <p>
         When you open the app, your browser sends technical data to my hosting provider Cloudflare: your IP
-        address, date and time, the address requested (for example which stop's departures, or the start and
-        destination stops and the time of a route search), the page you came from, and your browser and
+        address, date and time, the address requested (for example which stop's departures, or the start,
+        destination and time of a route search, which can include your position, section 5), the page you came from, and your browser and
         operating system. Cloudflare uses this data to deliver the app and to protect
         it from attacks. The photo in the header comes from my website www.pangwayne.com, which Cloudflare
         also hosts, so the same applies there.
@@ -120,13 +120,13 @@
       <h2>5. "My location"</h2>
       <p>
         Using your location is optional. The app reads it only when you press <strong>My location</strong> (in German: Mein Standort),
-        or the location button next to "From" in the route search (<strong>Nearest stop as start</strong>), once
+        or the location button next to "From" in the route search (<strong>My location as start</strong>), once
         per press; it does not follow you. The first time, your browser asks whether the app may use your
         location; if you allowed it earlier, the browser may not ask again.
       </p>
       <p>
-        Your exact position is used only on your device to find the closest stops and to show it as a red dot on
-        the map. The dot stays until you press the button again or reload the page; the position is kept only in
+        With <strong>My location</strong>, your exact position is used only on your device to find the closest
+        stops and to show it as a red dot on the map. The dot stays until you press the button again or reload the page; the position is kept only in
         the open page and not stored. It is not sent to me or to anyone else. However, two things can show roughly where you are:
       </p>
       <ul>
@@ -140,12 +140,18 @@
         </li>
       </ul>
       <p>
-        In the route search, the button only fills in the stop closest to you as the start; the map does not move
-        and nothing is loaded until you search. Only that stop is then sent with the search (section 6).
+        <strong>In the route search, this is different:</strong> the button puts your position itself in as the
+        start ("My location"), so the connections can include the walk from where you are to the best stop. The
+        map does not move and nothing is sent while you fill in the form. When you search, your exact position, as
+        your device found it, is sent with the search to my server and from there to Transitous (section 6).
+        Transitous receives it without your IP address. "Earlier", "Later" and "Refresh" send the same position
+        again; it is not updated in the background. Like every search, it is part of Cloudflare's technical data
+        and error logs (section 2, deleted after 3 days), and my server keeps the answer for up to two minutes. If
+        you would rather not share your position, type or pick a start stop instead.
       </p>
       <p>
-        <strong>Legal basis:</strong> your consent, given by pressing one of these buttons and allowing location access
-        (Art. 6(1)(a) GDPR, Section 25(1) TDDDG). You can withdraw it at any time by removing the location
+        <strong>Legal basis:</strong> your consent, given by pressing one of these buttons and allowing location access, and in
+        the route search by starting the search with My location (Art. 6(1)(a) GDPR, Section 25(1) TDDDG). You can withdraw it at any time by removing the location
         permission for this site in your browser settings; this does not affect what happened before. Without
         it, you can still use the app by searching for stops or tapping them on the map.
       </p>
@@ -154,7 +160,8 @@
       <p>
         Timetables, live departures and connections come from <a href="https://transitous.org/">Transitous</a>.
         My server fetches them on your behalf, so Transitous receives only what it needs to answer (which stop,
-        which trip, or the stops and time of a route search), never your IP address or any other data about you.
+        which trip, or the start, destination and time of a route search, which can include your position, see
+        section 5), never your IP address or any other data about you.
       </p>
       <p>
         The stop search runs in your browser on the stop list the app has already loaded. What you type is not
@@ -163,7 +170,8 @@
       </p>
       <p>
         <strong>Route search:</strong> when you press "Find connections" (in German: Verbindungen suchen), the app
-        sends the start and destination stops you picked, the date and time, and whether you want to leave or
+        sends the start and destination you chose (stops, or your position for My location, section 5), the date
+        and time, and whether you want to leave or
         arrive then, to my server, which asks Transitous for connections. "Earlier", "Later" and "Refresh" send the
         same search again. Nothing is sent while you fill in the form. I do not store your searches and the app
         keeps no search history; the answer is shown only in the open page. Like every request, the search is part
