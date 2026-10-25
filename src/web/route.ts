@@ -8,7 +8,7 @@ import { type PlanRequest, PlanError, fetchPlan } from "./api";
 import { berlinDateTime, fromBerlin, planTime } from "./berlintime";
 import type { Board } from "./board";
 import { badgeTextColor, delayState, formatClock } from "./departures";
-import { t, onLangChange } from "./i18n";
+import { getLang, t, onLangChange } from "./i18n";
 import { startJourneyMap } from "./journeymap";
 import { fitPoints } from "./mapfit";
 import { shortName } from "./names";
@@ -64,6 +64,10 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
   let built: ReturnType<typeof buildForm> | null = null;
   let outcome: Outcome = { kind: "none" };
   let lastSearch: SubmittedSearch | null = null; // the search whose answer is on screen
+  // On a phone the form fills the sheet, so after a search that found connections it folds into one summary
+  // button. `found`: the last answer had connections; `folded`: the user has not opened the form since.
+  let found = false;
+  let folded = false;
   let controller: AbortController | null = null;
   let timeNote: string | null = null; // "this time happens twice" and the like
   let fieldError: string | null = null;
@@ -88,7 +92,9 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       pick(built.from, ends.from);
     }
     if (ends.to) pick(built.to, ends.to);
+    if (ends.from || ends.to) folded = false; // opened from a board to plan something new: show the form
     if (built.isNow) fillNow();
+    setDateBounds();
     openPanel(user);
     applyTexts();
     showList();
@@ -100,7 +106,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     const b = built!;
     detail = null;
     journeyMap.show(null);
-    renderPanel(user, t().routeTitle, [b.form, b.results]);
+    renderPanel(user, t().routeTitle, [b.fold, b.form, b.results]);
     render();
     if (focusOn) {
       refocus(b.body, focusOn);
@@ -205,7 +211,18 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
   function buildForm() {
     const form = document.createElement("form");
     form.className = "route-form";
+    form.id = "route-form";
     form.noValidate = true;
+
+    // The folded form: what was searched, and a way to change it. Filled in by renderFold().
+    const fold = focusKey(el("button", "route-fold") as HTMLButtonElement, "fold");
+    fold.type = "button";
+    fold.setAttribute("aria-controls", form.id);
+    fold.addEventListener("click", () => {
+      folded = !folded;
+      render();
+      if (!folded) fromState.input.focus();
+    });
 
     const from = stopField("route-from");
     const to = stopField("route-to");
@@ -282,6 +299,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     results.append(announce, body);
 
     const state = {
+      fold,
       form,
       results,
       body,
@@ -330,6 +348,13 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     const { date, time } = berlinDateTime(Date.now());
     built.date.value = date;
     built.time.value = time;
+  }
+
+  // The date picker offers only days the Worker accepts (2 hours back to 7 days ahead, Bonn dates).
+  function setDateBounds(): void {
+    if (!built) return;
+    built.date.min = berlinDateTime(Date.now() - PLAN_PAST_MS).date;
+    built.date.max = berlinDateTime(Date.now() + PLAN_AHEAD_MS).date;
   }
 
   // The nearest stop as the start. While the position is being found, From is empty and holds no stop, so a
@@ -431,9 +456,12 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     } else {
       const request = checkForm();
       if (!request) return;
-      submitted = { request, isNow: b.isNow, name: routeName() };
+      // checkForm only passes with both stops picked
+      submitted = { request, isNow: b.isNow, from: shortName(b.from.station!.name), to: shortName(b.to.station!.name) };
     }
-    const { request, name } = submitted;
+    const { request } = submitted;
+    const name = `${submitted.from} → ${submitted.to}`;
+    const fromForm = cursor === null && !again;
 
     controller?.abort();
     const mine = new AbortController();
@@ -451,6 +479,8 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       outcome = { kind: "plan", plan: parsePlan(res.data), name, fetchedAtMs: res.fetchedAtMs, refreshFailed: false };
       const n = outcome.plan.journeys.length + (outcome.plan.walk ? 1 : 0);
       b.announce.textContent = n ? t().routeFound(n) : t().routeNone;
+      found = n > 0;
+      if (fromForm) folded = found; // fold only when there is something to look at
     } catch (err) {
       if (controller !== mine) return;
       // Anything that is not a refusal from the Worker (a bug while reading the answer, say) counts as "no
@@ -461,6 +491,8 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
         outcome = { ...previous, refreshFailed: true };
       } else {
         outcome = { kind: "failed", failure: planFailure(failure.status, navigator.onLine), retryAfterS: failure.retryAfterS };
+        // A failed search from the form keeps the form open; a failed page keeps the fold as it was.
+        if (fromForm) folded = found = false;
         b.announce.textContent = failureText(outcome.failure, outcome.retryAfterS);
       }
     } finally {
@@ -470,7 +502,14 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     render();
     if (!ownsPanel(user)) return;
     if (keep) refocus(b.body, keep);
-    else if (cursor === null && !again) b.body.querySelector<HTMLElement>("h3")?.focus();
+    else if (fromForm) {
+      // Folded, the summary and the heading both fit at the top: show both instead of scrolling half of it away.
+      if (!b.form.hidden) b.body.querySelector<HTMLElement>("h3")?.focus();
+      else {
+        document.querySelector("#board")!.scrollTop = 0;
+        b.body.querySelector<HTMLElement>("h3")?.focus({ preventScroll: true });
+      }
+    }
   }
 
   // The form as a request, or null after pointing at what is missing or wrong.
@@ -478,6 +517,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     const b = built!;
     fieldError = null;
     timeNote = null;
+    setDateBounds(); // the panel may have stayed open past midnight
     for (const input of [b.from.input, b.to.input, b.date, b.time]) input.removeAttribute("aria-invalid");
     const from = b.from.station;
     const to = b.to.station;
@@ -532,11 +572,29 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     b.error.classList.toggle("note", fieldError === null);
     b.results.setAttribute("aria-busy", String(searching));
 
+    renderFold();
+
     // Focus inside the results (Earlier, Later, Refresh) comes back after the redraw.
     const key = focusedKey(b.body);
     b.body.replaceChildren(...resultNodes());
     if (key) refocus(b.body, key);
     renderStatus();
+  }
+
+  // The summary button shows while connections are on screen; the form hides behind it when folded. It
+  // describes the submitted search, not the form, which may hold edits that were not sent.
+  function renderFold(): void {
+    const b = built!;
+    const show = found && lastSearch !== null;
+    const hide = show && folded;
+    b.fold.hidden = !show;
+    b.form.hidden = hide;
+    b.fold.setAttribute("aria-expanded", String(!hide));
+    if (!lastSearch) return;
+    const s = lastSearch;
+    const text = el("span", "route-fold-text");
+    text.append(el("b", "", s.from), " ", ...arrow(), " ", el("b", "", s.to), ` · ${whenText(s)}`);
+    b.fold.replaceChildren(text, el("span", "route-fold-action", hide ? t().routeEdit : t().routeFoldHide));
   }
 
   function resultNodes(): HTMLElement[] {
@@ -744,6 +802,21 @@ function walkOption(j: Journey, onOpen: () => void): HTMLElement {
     btn.append(chain);
   }
   return li;
+}
+
+// When a submitted search leaves or arrives, for the folded summary: "jetzt", "ab 21:39", "an 26. Okt. 08:15".
+function whenText(s: SubmittedSearch): string {
+  if (s.isNow) return t().routeFoldNow;
+  const ms = Date.parse(s.request.time);
+  const { date, time } = berlinDateTime(ms);
+  // "26. Okt." / "26 Oct" (British order, not the US "Oct 26")
+  const dayFormat = new Intl.DateTimeFormat(getLang() === "de" ? "de-DE" : "en-GB", {
+    day: "numeric",
+    month: "short",
+    timeZone: "Europe/Berlin",
+  });
+  const day = date === berlinDateTime(Date.now()).date ? "" : `${dayFormat.format(ms)} `;
+  return s.request.arriveBy ? t().routeFoldArrive(day + time) : t().routeFoldDepart(day + time);
 }
 
 // The "→" between two times: seen, but read as "bis" / "to".

@@ -109,6 +109,11 @@ const de = {
   routeTransfers: (n: number) => (n === 1 ? "1 Umstieg" : `${n} Umstiege`),
   routeWalkMin: (m: number) => `${m} min Fußweg`,
   routeUntil: "bis", // read between the two times of a connection (the arrow is hidden from screen readers)
+  routeFoldNow: "jetzt", // folded search summary: "Bonn Hbf → K-Neumarkt · jetzt · Ändern"
+  routeFoldDepart: (when: string) => `ab ${when}`,
+  routeFoldArrive: (when: string) => `an ${when}`,
+  routeEdit: "Ändern",
+  routeFoldHide: "Einklappen",
   routeFromStop: (stop: string) => `ab ${stop}`,
   routePlanned: "geplant",
   routeEarlier: "Früher",
@@ -244,6 +249,11 @@ const en: typeof de = {
   routeTransfers: (n) => (n === 1 ? "1 change" : `${n} changes`),
   routeWalkMin: (m) => `${m} min walk`,
   routeUntil: "to",
+  routeFoldNow: "now",
+  routeFoldDepart: (when) => `leaving ${when}`,
+  routeFoldArrive: (when) => `arriving ${when}`,
+  routeEdit: "Change",
+  routeFoldHide: "Hide form",
   routeFromStop: (stop) => `from ${stop}`,
   routePlanned: "planned",
   routeEarlier: "Earlier",

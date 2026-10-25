@@ -424,6 +424,14 @@ html[lang="en"] .flag-en {
   display: none;
 }
 
+/* Phones: the route form and its connections need more room than half the screen (a 640px phone fit no
+   whole connection). A connection's details keep the half sheet, so the route stays visible on the map. */
+@media (max-width: 699px) {
+  #board:has(.route-results) {
+    max-height: 70%;
+  }
+}
+
 @media (min-width: 700px) {
   #board {
     left: 12px;
@@ -945,6 +953,47 @@ html[lang="en"] .flag-en {
   margin: 0 0 8px;
 }
 
+.route-form[hidden],
+.route-fold[hidden] {
+  display: none;
+}
+
+/* The folded form: the search that was made, and "Ändern" to open the form again. */
+.route-fold {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--ink) 25%, transparent);
+  border-radius: 10px;
+  background: var(--hover);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.route-fold:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.route-fold-text {
+  min-width: 0;
+}
+
+.route-fold-action {
+  flex: none;
+  font-weight: 700;
+  color: var(--accent);
+}
+
 .route-label {
   display: block;
   margin: 0 0 4px;
@@ -1062,7 +1111,14 @@ html[lang="en"] .flag-en {
 }
 
 .route-moment .route-input {
-  flex: 1 1 130px;
+  flex: 1 1 100px;
+}
+
+/* A full date ("25.10.2026" plus the calendar icon) needs about 150px; on narrow phones "Jetzt" moves to
+   its own row instead of squeezing the date. */
+.route-moment #route-date {
+  flex-basis: 150px;
+  min-width: 150px;
 }
 
 .route-now {

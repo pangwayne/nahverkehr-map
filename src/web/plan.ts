@@ -200,7 +200,8 @@ export function journeyMinutes(j: Journey): number {
 export interface SubmittedSearch {
   request: PlanRequest;
   isNow: boolean; // searched with "Now": a refresh searches from the new now
-  name: string; // "Bonn Hbf → K-Neumarkt"
+  from: string; // stop names as shown ("Bonn Hbf", "K-Neumarkt")
+  to: string;
 }
 
 // What Refresh sends: a "Now" search from the current minute (first page again); a search for a chosen
