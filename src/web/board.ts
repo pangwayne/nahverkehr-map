@@ -17,7 +17,17 @@ import {
   toRows,
   upcoming,
 } from "./departures";
-import { type PanelUser, ageLine, el, focusKey, offsetClearOfPanel, openPanel, ownsPanel, renderPanel } from "./panel";
+import {
+  type PanelUser,
+  ageLine,
+  el,
+  focusKey,
+  focusPanel,
+  offsetClearOfPanel,
+  openPanel,
+  ownsPanel,
+  renderPanel,
+} from "./panel";
 import { t, onLangChange } from "./i18n";
 import { setStationNames, shortName } from "./names";
 import { ageText, resetStatus, setStatus, setStatusNote } from "./status";
@@ -93,6 +103,7 @@ export function startBoard(
   let messageBusy: () => boolean = () => false; // still waiting for something ("finding you")
   let shown: Shown[] = [];
   let results = new Map<string, Result>();
+  let showAll = false; // "Weitere Abfahrten": every fetched row, not just the first few
   let generation = 0; // bumps whenever the board changes, so late answers are ignored
   let lastPollMs = 0;
   let hereMarker: maplibregl.Marker | null = null;
@@ -169,17 +180,55 @@ export function startBoard(
     map.easeTo({ center: [station.lon, station.lat], zoom, offset: offsetClearOfPanel() });
   }
 
-  function open(list: Shown[], heading: () => string): void {
+  // `again`: the same stops once more (back from a trip card): keep the rows already fetched and the
+  // "more" choice, so the board shows at once and the row that was opened is still there to get focus.
+  function open(list: Shown[], heading: () => string, again = false): void {
     openPanel(user);
     generation++;
     shown = list;
     title = heading;
     message = null;
-    results = new Map();
+    if (!again) {
+      results = new Map();
+      showAll = false;
+    }
     stopLines.clear();
     highlight(list.map((s) => s.station));
     render();
     void refresh();
+  }
+
+  // The trip card's way back to this board, with focus on the row that opened it (`key`; if that trip has
+  // left the board meanwhile, on the board's title).
+  function backToBoard(key: string): TripRef["back"] {
+    const list = shown;
+    const heading = title;
+    return {
+      label: () => t().backToDepartures,
+      run: () => {
+        open(list, heading, true);
+        const only = list.length === 1 ? list[0]!.station : null;
+        if (only) map.easeTo({ center: [only.lon, only.lat], offset: offsetClearOfPanel() });
+        const row = document.querySelector<HTMLElement>(`#board-body [data-focus="${CSS.escape(key)}"]`);
+        if (row) row.focus();
+        else focusPanel();
+      },
+    };
+  }
+
+  // Shows the rest of the fetched departures (no extra request: the Worker already asks for that many).
+  function moreButton(hidden: number): HTMLElement {
+    const btn = focusKey(
+      el("button", "link-button board-more", showAll ? t().fewerDepartures : t().moreDepartures(hidden)) as HTMLButtonElement,
+      "more",
+    );
+    btn.type = "button";
+    btn.setAttribute("aria-expanded", String(showAll));
+    btn.addEventListener("click", () => {
+      showAll = !showAll;
+      render();
+    });
+    return btn;
   }
 
   // `busy`: the status line says "loading" while true; otherwise the message is the final answer.
@@ -321,14 +370,19 @@ export function startBoard(
     }
 
     const limit = nearby ? ROWS_NEARBY : ROWS_PER_STATION;
-    const rows = upcoming(mergeRows(got.map((r) => r.rows)), now, limit);
+    const all = upcoming(mergeRows(got.map((r) => r.rows)), now, Infinity);
+    const rows = showAll ? all : all.slice(0, limit);
     const anyError = got.some((r) => r.error !== null);
     const sameStop = nearby ? null : (shown[0]?.station.name ?? null);
-    stopLines.add(rows);
+    // Faint lines only for the first rows: "more" must not start more background requests.
+    stopLines.add(all.slice(0, limit));
     if (rows.length) {
       const list = el("ul", "rows");
-      for (const r of rows) list.append(renderRow(r, sameStop, now, onTripTap));
+      for (const r of rows) {
+        list.append(renderRow(r, sameStop, now, (trip) => onTripTap({ ...trip, back: backToBoard(rowKey(r)) })));
+      }
       parts.push(list);
+      if (all.length > limit) parts.push(moreButton(all.length - limit));
     } else if (!anyError) {
       parts.push(el("p", "board-note", t().noDepartures));
     }
@@ -407,6 +461,7 @@ function routeButtons(station: Station, onRoute: (station: Station, end: "from" 
   return box;
 }
 const nearYou = () => t().nearYou;
+const rowKey = (r: DepartureRow) => `${r.tripId}|${r.stopName}`;
 
 // `sameStop`: the tapped station's name, left out of the row details; null shows it on every row.
 function renderRow(
@@ -448,7 +503,7 @@ function renderRow(
   if (!r.extra) {
     row.classList.add("tappable");
     (row as HTMLButtonElement).type = "button";
-    focusKey(row, `${r.tripId}|${r.stopName}`); // near me: one trip can pass two of the shown stops
+    focusKey(row, rowKey(r)); // near me: one trip can pass two of the shown stops
     row.addEventListener("click", () => onTripTap({ tripId: r.tripId, line: r.line, color, focus: [r.lon, r.lat] }));
   }
   return li;

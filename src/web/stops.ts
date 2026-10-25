@@ -152,17 +152,25 @@ export function nearestStations(
     .slice(0, limit);
 }
 
-// Short forms used in stop names, so "Hauptbahnhof" finds "Bonn Hbf" and "Straße" finds "Str.".
+// Short forms used in stop names, so "Hauptbahnhof" finds "Bonn Hbf" and "Straße" finds "Str.". Also the
+// English words a visitor may type ("cologne main station" finds "Köln Hbf"). Applied after the umlaut
+// rule below, so the long forms are written without "ae/oe/ue".
 const SHORT_FORMS: [string, string][] = [
   ["hauptbahnhof", "hbf"],
+  ["main station", "hbf"],
+  ["central station", "hbf"],
   ["bahnhof", "bf"],
   ["strasse", "str"],
   ["platz", "pl"],
+  ["cologne", "koln"],
 ];
 
 // Lower case, no accents ("ü" -> "u", "ß" -> "ss"), long words shortened like in the stop names.
+// "ae/oe/ue" count as "ä/ö/ü" (keyboards without umlauts: "koeln" finds Köln). Names go through the same
+// rule, so a name really spelled with "ue" ("Kuenstr.") still matches what is typed.
 export function searchText(text: string): string {
   let s = text.toLowerCase().replace(/ß/g, "ss").normalize("NFD").replace(/[̀-ͯ]/g, "");
+  s = s.replace(/([aou])e/g, "$1");
   for (const [long, short] of SHORT_FORMS) s = s.replaceAll(long, short);
   return s;
 }
@@ -176,7 +184,8 @@ function words(text: string): string[] {
 function variants(typed: string): string[] {
   const out = [typed];
   if (typed.length >= 4) {
-    for (const [long, short] of SHORT_FORMS) if (long.startsWith(typed)) out.push(short);
+    // Two-word forms only count once typed in full: "main" alone must not find every "Hbf".
+    for (const [long, short] of SHORT_FORMS) if (!long.includes(" ") && long.startsWith(typed)) out.push(short);
   }
   return out;
 }

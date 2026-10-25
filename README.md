@@ -36,12 +36,16 @@ The tests are kept outside this repository, so `npm test` does not run in a fres
 - **Vehicle position:** a trip's track line is cut at its stops. If 40% of the time between two stops has
   passed (by the live or timetable times), the dot sits 40% along that piece of track. It is an estimate,
   not GPS.
+- **More departures:** a board shows the next 8; "more departures" shows the rest of what was already
+  fetched (about 20 minutes at a big station), without another request. A trip card opened from a board
+  has a way back to it.
 - **Lines at a stop:** while a departure board is open, the lines on it are drawn faintly on the map (one
   `/api/trip` request per line, at most 12, remembered while the page is open). Train stations get bigger dots.
 - **Stop names:** small stops show the town's car plate instead of the town ("Köln Neumarkt" becomes
   "K-Neumarkt", "Bonn Auerberg" becomes "BN-Auerberg"); train stations keep their full name.
 - **Stop search:** runs in the browser on the stop list already loaded; what you type is not sent anywhere.
-  The town, its plate or no town at all all work ("bonn hbf", "k neumarkt", "wehrhahn").
+  The town, its plate or no town at all all work ("bonn hbf", "k neumarkt", "wehrhahn"), and so do
+  spellings without umlauts and a few English names ("koeln hbf", "cologne main station").
 - **Map view:** a reload opens the map where you left it (kept in that browser tab only, until it is closed).
 - **Location:** "Mein Standort" (My location) finds the closest stops on your device and marks your position with a red dot; the position is not sent anywhere.
 - **Route search:** pick a start and a destination stop (or use your location as the start: the closest

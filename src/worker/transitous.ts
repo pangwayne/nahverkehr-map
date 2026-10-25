@@ -16,8 +16,10 @@ export const AREA_VERSION = "rheinland-1";
 // All visitors asking for the same stop within the same 20 s share one upstream request.
 export const DEPARTURES_BUCKET_MS = 20_000;
 
-// Enough rows for a big station (Bonn Hbf has 32 platforms) to cover the next ~15 minutes.
-export const DEPARTURES_COUNT = 20;
+// Enough rows for a big station (Bonn Hbf has 32 platforms) to cover the next ~20 minutes: the board shows 8,
+// "more departures" the rest. Measured 2026-10-25 at Bonn Hbf: 20 rows reached 10 min, 40 rows 23 min
+// (80 KB JSON, 7 KB gzip; 20 rows: 4 KB gzip). One request either way.
+export const DEPARTURES_COUNT = 40;
 
 // Only German stops (the IDs our stops list uses). Keeps the Worker from proxying arbitrary requests.
 const STOP_ID_PATTERN = /^de-DELFI_[A-Za-z0-9:._-]{1,80}$/;

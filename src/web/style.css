@@ -928,6 +928,13 @@ html[lang="en"] .flag-en {
   margin: 0 0 6px;
 }
 
+/* "12 weitere Abfahrten" under the board's rows. */
+.board-more {
+  display: block;
+  min-height: 32px;
+  margin: 4px 0 0;
+}
+
 .board-route-btn {
   min-height: 32px;
   padding: 4px 12px;
