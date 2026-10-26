@@ -77,7 +77,7 @@ import {
 import { type SavedRoute, isRouteSaved, isStopSaved, loadSaved, onSavedChange, savableRoute, toggleRoute } from "./saved";
 import { ageText, resetStatus, setStatus, setStatusNote, setStatusTitle } from "./status";
 import { type SearchItem, attachStopSearch } from "./stopsearch";
-import type { Station } from "./stops";
+import { type Station, findStation, stationIds } from "./stops";
 import type { TripRef } from "./tripcard";
 import { PLAN_AHEAD_MS, PLAN_MAX_TRANSFERS, PLAN_PAST_MS, isAreaStopId, isInArea, isValidPosition } from "../worker/transitous";
 
@@ -1202,7 +1202,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     const toPlace = (e: EndRef | null): Place | null => {
       if (!e || e.kind === "here") return null;
       if (e.kind === "spot") return e;
-      const station = board.stations().find((s) => s.id === e.id) ?? null;
+      const station = findStation(board.stations(), e.id);
       if (!station) ok = false;
       return station;
     };
@@ -1335,8 +1335,8 @@ function attachStopSearchField(
     onPickSpot: (spot) => set(spot, spot.name),
     emptyItems: (): SearchItem[] =>
       loadSaved()
-        .stops.map((s) => board.stations().find((x) => x.id === s.id))
-        .filter((s): s is Station => s !== undefined && isStopSaved(s.id))
+        .stops.map((s) => findStation(board.stations(), s.id))
+        .filter((s): s is Station => s !== null && isStopSaved(stationIds(s)))
         .map((s) => ({ label: shortName(s.name), sub: t().saved, kind: "saved" as const, run: () => set(s, shortName(s.name)) })),
   });
 }

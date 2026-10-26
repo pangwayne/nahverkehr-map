@@ -8,6 +8,7 @@ import { shortName } from "./names";
 import { focusPanel } from "./panel";
 import type { Spot } from "./places";
 import { type SavedRoute, clearSaved, loadSaved } from "./saved";
+import { findStation } from "./stops";
 import { type SearchItem, attachStopSearch } from "./stopsearch";
 
 // The three cities this app is about, as map shortcuts ([lon, lat], around each main station).
@@ -44,7 +45,7 @@ export function startSearch(board: Board, actions: SearchActions): void {
       const saved = loadSaved();
       const items: SearchItem[] = [];
       for (const s of saved.stops) {
-        const station = board.stations().find((x) => x.id === s.id);
+        const station = findStation(board.stations(), s.id);
         if (!station) continue;
         items.push({
           label: shortName(station.name),

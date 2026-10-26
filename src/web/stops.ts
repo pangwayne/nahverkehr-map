@@ -24,6 +24,9 @@ const TRAIN_MODES = new Set<string>([
 
 export interface Station {
   id: string; // e.g. "de:05314:61101" (Bonn Hbf)
+  // The other IDs of same-name stations merged into this one (Köln Hbf: "de:05315:11201_G"). Links and saved
+  // stops may name any of them: which one became `id` used to follow the stop list's order, which changes.
+  aliases: string[];
   name: string;
   lon: number;
   lat: number;
@@ -60,32 +63,38 @@ export function groupStations(places: StopPlace[]): Station[] {
   }
 
   // Looked up by name: comparing every station with every other is too slow for ~7,000 stations on a phone.
-  const merged: { id: string; platforms: StopPlace[] }[] = [];
-  const byName = new Map<string, { id: string; platforms: StopPlace[] }[]>();
+  const merged: { ids: string[]; platforms: StopPlace[] }[] = [];
+  const byName = new Map<string, { ids: string[]; platforms: StopPlace[] }[]>();
   for (const [id, platforms] of groups) {
     const center = average(platforms);
     const name = platforms[0]!.name;
     const sameName = byName.get(name) ?? [];
     const twin = sameName.find((m) => distanceM(average(m.platforms), center) <= SAME_NAME_MERGE_M);
     if (twin) {
+      twin.ids.push(id);
       twin.platforms.push(...platforms);
       continue;
     }
-    const entry = { id, platforms: [...platforms] };
+    const entry = { ids: [id], platforms: [...platforms] };
     merged.push(entry);
     sameName.push(entry);
     byName.set(name, sameName);
   }
 
-  return merged.map(({ id, platforms }) => {
+  return merged.map(({ ids, platforms }) => {
     const [lon, lat] = average(platforms);
+    // One ID names the station whatever order the stop list comes in, so links stay the same: the smallest
+    // of the usual "de:..." IDs (Bonn Hbf: "de:05314:61101", not the merged tram stop "D_000000000687").
+    const [id, ...aliases] = [...ids].sort(byStationId);
     return {
-      id,
+      id: id!,
+      aliases,
       name: platforms[0]!.name,
       lon,
       lat,
       stopIds: platforms.map((p) => p.stopId),
-      planStopId: planStopId(id, platforms, [lon, lat]),
+      // A merged station is searched by whichever of its IDs is a stop of its own (Köln Hbf: not the "_G").
+      planStopId: planStopId([id!, ...aliases].find((i) => hasOwnStop(i, platforms)) ?? id!, platforms, [lon, lat]),
       hasTram: platforms.some((p) => p.modes?.some((m) => m === "TRAM" || m === "SUBWAY") ?? false),
       hasTrain: platforms.some((p) => p.modes?.some((m) => TRAIN_MODES.has(m)) ?? false),
     };
@@ -97,9 +106,11 @@ export function groupStations(places: StopPlace[]): Station[] {
 // IDs that are not in the list, so we never make one up (checked 2026-10-24). Only IDs the Worker takes for
 // route searches count (isAreaStopId: a district of the area); a station without one (22 in 2026-10, such as
 // "D_000000018173" in Meerbusch or the KD piers) is sent as its position, like an address.
+const hasOwnStop = (stationId: string, platforms: StopPlace[]): boolean =>
+  platforms.some((p) => p.stopId === GERMAN_PREFIX + stationId && isAreaStopId(p.stopId));
+
 export function planStopId(stationId: string, platforms: StopPlace[], center: LonLat): string {
-  const own = platforms.find((p) => p.stopId === GERMAN_PREFIX + stationId);
-  if (own && isAreaStopId(own.stopId)) return own.stopId;
+  if (hasOwnStop(stationId, platforms)) return GERMAN_PREFIX + stationId;
   let best: StopPlace | null = null;
   for (const p of platforms) {
     if (!isAreaStopId(p.stopId)) continue;
@@ -108,12 +119,26 @@ export function planStopId(stationId: string, platforms: StopPlace[], center: Lo
   return best?.stopId ?? `${center[1].toFixed(6)},${center[0].toFixed(6)}`;
 }
 
+// "de:..." IDs first, then in plain character order.
+function byStationId(x: string, y: string): number {
+  const usual = Number(!x.startsWith("de:")) - Number(!y.startsWith("de:"));
+  return usual || (x < y ? -1 : x > y ? 1 : 0);
+}
+
 function average(places: StopPlace[]): LonLat {
   return [
     places.reduce((sum, p) => sum + p.lon, 0) / places.length,
     places.reduce((sum, p) => sum + p.lat, 0) / places.length,
   ];
 }
+
+// The station a link or saved stop names: by its ID, or by one of the IDs merged into it.
+export function findStation(stations: Station[], id: string): Station | null {
+  return stations.find((s) => s.id === id || s.aliases.includes(id)) ?? null;
+}
+
+// Every ID a station goes by (its own first).
+export const stationIds = (s: Station): string[] => [s.id, ...s.aliases];
 
 // A stop from somewhere else (e.g. a stop on a trip's route) -> our station for it: by platform ID,
 // else the nearest station with the same name within `maxM` meters. Null if there is none.

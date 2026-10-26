@@ -111,12 +111,15 @@ function store(saved: Saved): void {
   for (const fn of listeners) fn();
 }
 
-export const isStopSaved = (id: string): boolean => loadSaved().stops.some((s) => s.id === id);
+// `ids`: every ID the station goes by (stops.ts stationIds): it may have been saved under one merged into it.
+export const isStopSaved = (ids: string[]): boolean => loadSaved().stops.some((s) => ids.includes(s.id));
 
-export function toggleStop(stop: SavedStop): boolean {
+// `aliases`: the station's other IDs; a copy saved under one of them counts as this stop.
+export function toggleStop(stop: SavedStop, aliases: string[] = []): boolean {
   const saved = loadSaved();
-  const on = saved.stops.some((s) => s.id === stop.id);
-  const stops = on ? saved.stops.filter((s) => s.id !== stop.id) : [stop, ...saved.stops].slice(0, MAX_ITEMS);
+  const ids = [stop.id, ...aliases];
+  const on = saved.stops.some((s) => ids.includes(s.id));
+  const stops = on ? saved.stops.filter((s) => !ids.includes(s.id)) : [stop, ...saved.stops].slice(0, MAX_ITEMS);
   store({ ...saved, stops });
   return !on;
 }

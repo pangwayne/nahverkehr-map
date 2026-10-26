@@ -43,7 +43,7 @@ import { setStationNames, shortName } from "./names";
 import { isStopSaved, onSavedChange, toggleStop } from "./saved";
 import { ageText, resetStatus, setStatus, setStatusNote } from "./status";
 import { startStopLines } from "./stoplines";
-import { type Station, groupStations, matchStation, nearestStations } from "./stops";
+import { type Station, groupStations, matchStation, nearestStations, stationIds } from "./stops";
 import type { TripRef } from "./tripcard";
 import { isBoardStopId } from "../worker/transitous";
 
@@ -188,7 +188,8 @@ export function startBoard(
         const { data } = await fetchStops(AbortSignal.timeout(FETCH_TIMEOUT_MS));
         stations = groupStations(data);
         setStationNames(stations);
-        for (const s of stations) byId.set(s.id, s);
+        // Old links and saved stops may name a station by an ID merged into it (stops.ts aliases).
+        for (const s of stations) for (const id of stationIds(s)) byId.set(id, s);
         stationsFailed = false;
         updateSource();
         stationsChanged();
@@ -429,10 +430,12 @@ export function startBoard(
         box.append(btn);
       }
     }
-    const saved = isStopSaved(station.id);
+    const saved = isStopSaved(stationIds(station));
     const save = button("board-route-btn", saved ? `★ ${t().saved}` : t().save, "save");
     save.setAttribute("aria-pressed", String(saved));
-    save.addEventListener("click", () => toggleStop({ id: station.id, name: shortName(station.name) }));
+    save.addEventListener("click", () =>
+      toggleStop({ id: station.id, name: shortName(station.name) }, station.aliases),
+    );
     const share = button("board-route-btn", t().share, "share");
     share.addEventListener("click", () => void shareLink(linkTo({ kind: "stop", id: station.id }), shortName(station.name)));
     box.append(save, share);
@@ -613,6 +616,7 @@ function oneOffStation(stop: StopRef): Station | null {
   if (!stop.stopId || !isBoardStopId(stop.stopId)) return null;
   return {
     id: stop.stopId,
+    aliases: [],
     name: stop.name,
     lon: stop.lon,
     lat: stop.lat,
