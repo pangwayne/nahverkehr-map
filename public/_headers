@@ -1,5 +1,2 @@
-# Built JS, CSS and fonts carry a content hash in their name, so a copy can be kept for a year:
-# a new build gets new names. These files are served without the Worker (wrangler.jsonc).
-/assets/*
-  Cache-Control: public, max-age=31536000, immutable
-  X-Content-Type-Options: nosniff
+# Cache headers for the built files under /assets/ are set by the Worker (src/worker/index.ts assetResponse):
+# a year for files that exist, never for a 404. A rule here would also cover 404s.

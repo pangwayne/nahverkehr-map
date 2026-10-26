@@ -9,12 +9,13 @@
   "workers_dev": false,
   "preview_urls": false,
   // The pages (/, /privacy, ...) and /api/* go through the Worker: it adds the security headers, with a
-  // fresh nonce per page for Cloudflare's injected bot-check script. The built JS/CSS under /assets/ are
-  // served directly and for free. Unknown addresses get 404.html, with status 404.
+  // fresh nonce per page for Cloudflare's injected bot-check script. The built JS/CSS under /assets/ go
+  // through it too, so only files that exist are kept for a year (a cached 404 left a blank page after a
+  // deploy). A browser asks for them once a build. Unknown addresses get 404.html, with status 404.
   "assets": {
     "binding": "ASSETS",
     "not_found_handling": "404-page",
-    "run_worker_first": ["/*", "!/assets/*"]
+    "run_worker_first": true
   },
   // Requests per visitor (IP) and minute that need Transitous (cache misses only). See src/worker/index.ts.
   // Route searches have their own, lower limit.

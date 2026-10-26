@@ -1,5 +1,5 @@
-// Cloudflare Worker: handles /api/* requests and adds security headers to the pages.
-// The built JS/CSS under /assets/ never reach it (wrangler.jsonc).
+// Cloudflare Worker: handles /api/* requests, adds security headers to the pages and sets how long the built
+// JS/CSS under /assets/ may be kept (assetResponse).
 // Free plan rule: keep this thin (forward + cache only, no heavy parsing).
 
 import {
@@ -87,6 +87,7 @@ export function contentSecurityPolicy(nonce: string): string {
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname.startsWith("/assets/")) return assetResponse(await env.ASSETS.fetch(request));
     if (!url.pathname.startsWith("/api/")) return withPageHeaders(await env.ASSETS.fetch(request));
     if (request.method !== "GET" && request.method !== "HEAD") {
       return withSecurityHeaders(
@@ -215,6 +216,19 @@ async function api(
 }
 
 // Copy a response so its headers can be changed (responses from fetch/ASSETS are read-only).
+// Built files carry a content hash in their name, so a copy can be kept for a year: a new build gets new names.
+// Only a file that was there, though. A 404 (a file asked for in the seconds a deploy takes to reach every
+// Cloudflare location, or an old build's file) must not be kept: kept for a year, the page stayed blank.
+const ASSET_CACHE = "public, max-age=31536000, immutable";
+
+export function assetResponse(res: Response): Response {
+  const out = new Response(res.body, res);
+  const found = res.status === 200 || res.status === 304;
+  out.headers.set("Cache-Control", found ? ASSET_CACHE : "no-store");
+  out.headers.set("X-Content-Type-Options", "nosniff");
+  return out;
+}
+
 function withSecurityHeaders(res: Response): Response {
   const out = new Response(res.body, res);
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) out.headers.set(name, value);
