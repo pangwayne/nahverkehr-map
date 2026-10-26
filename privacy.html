@@ -53,7 +53,17 @@
       <p>
         <strong>Bot detection:</strong> Every time a page loads, Cloudflare runs a small check script in your
         browser that looks at technical features of the browser to detect automated access (bots). Cloudflare
-        stores the result in the cookie <code>cf_clearance</code> on your device.
+        stores the result in the cookie <code>cf_clearance</code> on your device. According to Cloudflare, a check
+        is valid for 15 minutes; while the page stays open, the script checks again. If Cloudflare ever asks your
+        browser to pass a check, the cookie lets you through for 30 minutes before a new check. The cookie holds
+        only this result, not what you look at in the app.
+      </p>
+      <p>
+        <strong>Faster page changes:</strong> Cloudflare tells your browser (header <code>Speculation-Rules</code>)
+        that it may load pages of pangwayne.com in advance that you are likely to open next. Your browser then
+        fetches such a page from Cloudflare as if you had opened it; nothing else is sent. Cloudflare does this
+        only for pages it already holds ready, never for the app's own pages and data, which my server answers
+        itself.
       </p>
       <p>
         <strong>Protection against overload:</strong> So nobody can swamp the app with mass requests, my server
@@ -62,7 +72,7 @@
         10. The counts only last that minute and are not stored.
       </p>
       <p>
-        <strong>Legal basis:</strong> my legitimate interest in a secure, working app (Art. 6(1)(f) GDPR). The bot
+        <strong>Legal basis:</strong> my legitimate interest in a secure, fast, working app (Art. 6(1)(f) GDPR). The bot
         detection and its cookie protect the app you are using and are strictly necessary for that (Section 25(2)
         No. 2 TDDDG).
       </p>
@@ -90,8 +100,8 @@
         So the map does not jump back when you reload the page, your browser keeps the current map view in this
         tab's session storage (entry <code>view</code>: the centre point and zoom level of the map). If you used "My
         location", that view can be near where you were. It stays on your device, is never sent to me or anyone
-        else, and is deleted as soon as you close the tab or browser. It is strictly necessary for the map you are
-        using (Section 25(2) No. 2 TDDDG). Earlier versions of the app kept this entry in local storage for good;
+        else, and is deleted as soon as you close the tab or browser. It only brings back the map you were using
+        when the page is reloaded in the same tab, and is strictly necessary for that (Section 25(2) No. 2 TDDDG). Earlier versions of the app kept this entry in local storage for good;
         the app deletes that old copy on your next visit.
       </p>
       <p>
@@ -99,7 +109,9 @@
         your browser keeps that in its local storage (entries <code>saved</code>: the saved stops and routes, with
         their names and, for addresses and places, their coordinates; <code>prefs</code>: the options). My
         location is never saved as a position: a saved route from "My location" asks for it again. Both entries
-        stay on your device and are never sent to me or anyone else. You can delete the saved items in the search
+        stay on your device: they are not uploaded or synchronised anywhere. Only when you use a saved stop or
+        route, or search, does the app send what that search needs (the ends and the options you changed, section
+        6), as with any search. You can delete the saved items in the search
         box ("Delete saved stops and routes") or both entries in your browser settings. They are strictly
         necessary for the function you asked for (Section 25(2) No. 2 TDDDG).
       </p>
@@ -160,9 +172,10 @@
         start ("My location"), so the connections can include the walk from where you are to the best stop. The
         map does not move and nothing is sent while you fill in the form. When you search, your exact position, as
         your device found it, is sent with the search to my server and from there to Transitous (section 6).
-        Transitous receives it without your IP address. "Earlier", "Later" and "Refresh" send the same position
-        again; it is not updated in the background. Like every search, it is part of Cloudflare's technical data
-        and error logs (section 2, deleted after 3 days), and my server keeps the answer for up to two minutes. If
+        Transitous receives it without your IP address, but keeps it in its logs for up to 2 days (section 6).
+        "Earlier", "Later" and "Refresh" send the same position again; it is not updated in the background. Like
+        every search, it is part of Cloudflare's technical data and error logs (section 2, deleted after 3 days),
+        and my server keeps the answer for up to two minutes. If
         you would rather not share your position, type or pick a start stop instead.
       </p>
       <p>
@@ -208,8 +221,20 @@
         any information about who asked.
       </p>
       <p>
+        <strong>At Transitous:</strong> Transitous keeps the requests it receives in log files for up to 2 days,
+        to find errors and prevent abuse: the time and the full request, which can contain the stop or trip, the
+        start, destination and time of a route search with its options, coordinates (an address, a point on the
+        map, or your position with My location) and the text of an address search. These requests come from my
+        server, so Transitous sees my server's address, not yours. Details and contact:
+        <a href="https://transitous.org/privacy/">Transitous privacy policy</a>.
+      </p>
+      <p>
         <strong>Legal basis:</strong> my legitimate interest in offering a working timetable and route search
         (Art. 6(1)(f) GDPR).
+      </p>
+      <p>
+        <strong>Recipient:</strong> Transitous, a community project that runs a free public transport service
+        based on open data (<a href="https://transitous.org/">transitous.org</a>), with its server maintainers.
       </p>
 
       <h2>7. Email</h2>

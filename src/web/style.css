@@ -947,8 +947,12 @@ html[lang="en"] .flag-en {
   }
 }
 
-/* Always-visible attribution (Transitous asks for a visible link, the map's own credits can collapse). */
+/* Always-visible attribution (Transitous asks for a visible link, the map's own credits can collapse), and the
+   imprint and privacy links, which must be easy to find. Four groups with a dot between them; a line breaks
+   only between groups. */
 .site-footer {
+  display: flex;
+  flex-wrap: wrap;
   padding: 2px 16px;
   background: var(--head-bg);
   color: var(--head-soft);
@@ -957,21 +961,36 @@ html[lang="en"] .flag-en {
   line-height: 24px;
 }
 
+.footer-part {
+  white-space: nowrap;
+}
+
+.footer-part + .footer-part::before {
+  content: "\00a0·\00a0";
+}
+
 /* 24 px tall links, so a thumb can hit one without catching the line above or below (WCAG 2.5.8). */
 .site-footer a {
   display: inline-block;
   color: inherit;
 }
 
-/* Phones: one line that scrolls sideways instead of two, so the map keeps the room. Still always visible. */
+/* Phones: imprint and privacy first, so they are on the first line; the rest wraps onto a second line
+   (nothing hides off-screen). */
 @media (max-width: 640px) {
   .site-footer {
-    overflow-x: auto;
-    white-space: nowrap;
+    column-gap: 10px;
     font-size: 11px;
     line-height: 26px;
     padding: 0 12px;
-    scrollbar-width: none;
+  }
+
+  .footer-legal {
+    order: -1;
+  }
+
+  .footer-part + .footer-part::before {
+    content: none;
   }
 }
 

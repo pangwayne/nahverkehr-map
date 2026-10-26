@@ -53,7 +53,18 @@
       <p>
         <strong>Bot-Erkennung:</strong> Bei jedem Aufruf einer Seite führt Cloudflare in Ihrem Browser ein kleines
         Prüfskript aus, das technische Merkmale des Browsers auswertet, um automatisierte Zugriffe (Bots) zu
-        erkennen. Das Ergebnis speichert Cloudflare im Cookie <code>cf_clearance</code> auf Ihrem Gerät.
+        erkennen. Das Ergebnis speichert Cloudflare im Cookie <code>cf_clearance</code> auf Ihrem Gerät. Nach
+        Angaben von Cloudflare gilt eine Prüfung 15 Minuten; solange die Seite offen bleibt, prüft das Skript
+        erneut. Muss Ihr Browser einmal eine Prüfung von Cloudflare bestehen, lässt das Cookie Sie danach 30 Minuten
+        lang ohne neue Prüfung durch. Das Cookie enthält nur dieses Ergebnis, nicht, was Sie sich in der App
+        ansehen.
+      </p>
+      <p>
+        <strong>Schnellere Seitenwechsel:</strong> Cloudflare teilt Ihrem Browser mit (Header
+        <code>Speculation-Rules</code>), dass er Seiten von pangwayne.com, die Sie wahrscheinlich als Nächstes
+        öffnen, vorab laden darf. Ihr Browser ruft eine solche Seite dann bei Cloudflare ab, als hätten Sie sie
+        geöffnet; weitere Daten werden nicht gesendet. Cloudflare tut das nur für Seiten, die es bereits vorrätig
+        hält, nie für die Seiten und Daten der App selbst, die mein Server selbst beantwortet.
       </p>
       <p>
         <strong>Schutz vor Überlastung:</strong> Damit niemand die App mit massenhaften Anfragen lahmlegt, zählt
@@ -62,7 +73,7 @@
         eigenen Zähler mit einer Grenze von 10. Die Zähler gelten nur für diese Minute und werden nicht gespeichert.
       </p>
       <p>
-        <strong>Rechtsgrundlage:</strong> mein berechtigtes Interesse an einer sicheren, funktionierenden App
+        <strong>Rechtsgrundlage:</strong> mein berechtigtes Interesse an einer sicheren, schnellen, funktionierenden App
         (Art. 6 Abs. 1 lit. f DSGVO). Die Bot-Erkennung und ihr Cookie dienen der Sicherheit der App, die Sie
         aufrufen, und sind dafür unbedingt erforderlich (§ 25 Abs. 2 Nr. 2 TDDDG).
       </p>
@@ -91,8 +102,8 @@
         Kartenausschnitt im Sitzungsspeicher dieses Tabs (Eintrag <code>view</code>: Mittelpunkt und Zoomstufe der
         Karte). Wenn Sie "Mein Standort" genutzt haben, kann dieser Ausschnitt in der Nähe Ihres Aufenthaltsorts
         liegen. Er bleibt auf Ihrem Gerät, wird weder an mich noch an andere übertragen und wird gelöscht, sobald
-        Sie den Tab oder Browser schließen. Er ist für die Karte, die Sie gerade nutzen, unbedingt erforderlich
-        (§ 25 Abs. 2 Nr. 2 TDDDG). Frühere Versionen der App haben diesen Eintrag dauerhaft im lokalen Speicher
+        Sie den Tab oder Browser schließen. Er stellt nur die Karte wieder her, die Sie gerade genutzt haben, wenn
+        die Seite im selben Tab neu geladen wird, und ist dafür unbedingt erforderlich (§ 25 Abs. 2 Nr. 2 TDDDG). Frühere Versionen der App haben diesen Eintrag dauerhaft im lokalen Speicher
         abgelegt; die App löscht diese alte Kopie beim nächsten Aufruf.
       </p>
       <p>
@@ -100,8 +111,10 @@
         der Routensuche ändern, speichert Ihr Browser das im lokalen Speicher (Einträge <code>saved</code>: die
         gemerkten Haltestellen und Routen mit ihren Namen und, bei Adressen und Orten, ihren Koordinaten;
         <code>prefs</code>: die Optionen). „Mein Standort“ wird dabei nie als Position gespeichert: Eine gemerkte
-        Route ab „Mein Standort“ fragt ihn erneut ab. Beide Einträge bleiben auf Ihrem Gerät und werden weder an
-        mich noch an andere übertragen. Sie können die gemerkten Einträge im Suchfeld löschen („Gemerkte
+        Route ab „Mein Standort“ fragt ihn erneut ab. Beide Einträge bleiben auf Ihrem Gerät: Sie werden nirgendwohin
+        hochgeladen oder synchronisiert. Erst wenn Sie eine gemerkte Haltestelle oder Route nutzen oder suchen,
+        sendet die App, was diese Suche braucht (Start, Ziel und die geänderten Optionen, Abschnitt 6), wie bei
+        jeder Suche. Sie können die gemerkten Einträge im Suchfeld löschen („Gemerkte
         Haltestellen und Routen löschen“) oder beide Einträge in Ihren Browsereinstellungen. Sie sind für die von
         Ihnen gewählte Funktion unbedingt erforderlich (§ 25 Abs. 2 Nr. 2 TDDDG).
       </p>
@@ -166,7 +179,8 @@
         („Mein Standort“), damit die Verbindungen den Fußweg von Ihrem Standort zur besten Haltestelle enthalten
         können. Die Karte bewegt sich nicht, und während Sie das Formular ausfüllen, wird nichts gesendet. Wenn Sie
         suchen, wird Ihre genaue Position, so wie Ihr Gerät sie ermittelt hat, mit der Suche an meinen Server und
-        von dort an Transitous übermittelt (Abschnitt 6). Transitous erhält sie ohne Ihre IP-Adresse. „Früher“,
+        von dort an Transitous übermittelt (Abschnitt 6). Transitous erhält sie ohne Ihre IP-Adresse, speichert sie
+        aber bis zu 2 Tage in seinen Protokollen (Abschnitt 6). „Früher“,
         „Später“ und „Aktualisieren“ senden dieselbe Position erneut; sie wird nicht im Hintergrund aktualisiert.
         Wie jede Suche gehört sie zu den technischen Daten und Fehlerprotokollen bei Cloudflare (Abschnitt 2, nach
         3 Tagen gelöscht), und mein Server hält die Antwort bis zu zwei Minuten bereit. Wenn Sie Ihre Position
@@ -219,8 +233,22 @@
         zwei Minuten bereit, ohne Angaben darüber, wer gefragt hat.
       </p>
       <p>
+        <strong>Bei Transitous:</strong> Transitous speichert die Anfragen, die es erhält, bis zu 2 Tage in
+        Protokolldateien, um Fehler zu finden und Missbrauch zu verhindern: den Zeitpunkt und die vollständige
+        Anfrage. Sie kann die Haltestelle oder Fahrt enthalten, Start, Ziel und Zeit einer Routensuche mit ihren
+        Optionen, Koordinaten (einer Adresse, eines Punkts auf der Karte oder Ihre Position bei Mein Standort) und
+        den Text einer Adresssuche. Diese Anfragen kommen von meinem Server; Transitous sieht also dessen Adresse,
+        nicht Ihre. Details und Kontakt:
+        <a href="https://transitous.org/privacy/" hreflang="en">Datenschutzerklärung von Transitous</a> (Englisch).
+      </p>
+      <p>
         <strong>Rechtsgrundlage:</strong> mein berechtigtes Interesse an einer funktionierenden Fahrplan- und
         Routensuche (Art. 6 Abs. 1 lit. f DSGVO).
+      </p>
+      <p>
+        <strong>Empfänger:</strong> Transitous, ein Gemeinschaftsprojekt, das einen freien Fahrplandienst auf
+        Grundlage offener Daten betreibt (<a href="https://transitous.org/">transitous.org</a>), mit seinen
+        Server-Betreuern.
       </p>
 
       <h2>7. E-Mail</h2>

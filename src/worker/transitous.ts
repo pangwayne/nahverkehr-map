@@ -49,6 +49,54 @@ export function isValidTripId(tripId: string): boolean {
   return TRIP_ID_PATTERN.test(tripId);
 }
 
+// Most German stop IDs start with the district they are in ("de:05314:61101": 05314 = Bonn); some leave out
+// the leading zero ("de:5120:..."). Null for IDs of other shapes ("D_000000018173", "000008075941").
+function districtOf(stopId: string): string | null {
+  const match = /^de-DELFI_de:(\d{4,5}):/.exec(stopId);
+  return match ? match[1]!.padStart(5, "0") : null;
+}
+
+// The districts of the stop area (2026-10-26: 6,741 of its 6,763 stations; the other 22 have IDs of other
+// shapes, and the app searches from their position instead, see planStopId in stops.ts).
+export const AREA_DISTRICTS = new Set([
+  "05111", // Düsseldorf
+  "05112", // Duisburg
+  "05113", // Essen
+  "05120", // Remscheid
+  "05122", // Solingen
+  "05124", // Wuppertal
+  "05158", // Kreis Mettmann
+  "05162", // Rhein-Kreis Neuss
+  "05314", // Bonn
+  "05315", // Köln
+  "05316", // Leverkusen
+  "05358", // Kreis Düren
+  "05362", // Rhein-Erft-Kreis
+  "05366", // Kreis Euskirchen
+  "05378", // Rheinisch-Bergischer Kreis
+  "05382", // Rhein-Sieg-Kreis
+  "05954", // Ennepe-Ruhr-Kreis
+  "07131", // Kreis Ahrweiler
+]);
+
+// A stop a route search may start or end at: one in a district of the area. Keeps the Worker from being a
+// route planner for all of Germany (positions have their own area check).
+export function isAreaStopId(stopId: string): boolean {
+  const district = districtOf(stopId);
+  return isValidStopId(stopId) && district !== null && AREA_DISTRICTS.has(district);
+}
+
+// A stop whose departures may be shown: anywhere in North Rhine-Westphalia or Rhineland-Palatinate, because a
+// trip card links to the boards of all stops of a regional train (Koblenz, Wesel, Siegen). IDs without a
+// district stay allowed: 22 stations of the area have such IDs (there is nothing to check them by).
+const BOARD_STATES = new Set(["05", "07"]);
+
+export function isBoardStopId(stopId: string): boolean {
+  if (!isValidStopId(stopId)) return false;
+  const district = districtOf(stopId);
+  return district === null ? !/^de-DELFI_de:\d/.test(stopId) : BOARD_STATES.has(district.slice(0, 2));
+}
+
 // A position as a route search end: "lat,lon" with up to 6 decimals (as the browser sends it), inside the stop
 // area. The area check keeps the Worker from planning routes anywhere in Europe for anyone.
 // A route between two positions is allowed (address to address), but only between two points in the area.
@@ -209,8 +257,8 @@ const PLAN_TIME_PATTERN = /^20\d{2}-[01]\d-[0-3]\dT[0-2]\d:[0-5]\dZ$/;
 const PLAN_CURSOR_PATTERN = /^(EARLIER|LATER)\|(\d{10})$/;
 
 // The checked search, or null if any field is missing, malformed, a date that does not exist,
-// outside the allowed time window, or from and to are the same place. Either end may be a position, as long
-// as it lies in the stop area (so this is no route planner for anywhere in Europe).
+// outside the allowed time window, or from and to are the same place. Either end may be a stop of the area's
+// districts or a position in the stop area (so this is no route planner for anywhere in Europe).
 // With a page cursor the cursor's time decides (it wins over `time` upstream), so an old open tab can still
 // page; `time` is then only checked for its form (it is part of the cache key).
 export function parsePlanQuery(params: URLSearchParams, nowMs: number): PlanQuery | null {
@@ -219,7 +267,7 @@ export function parsePlanQuery(params: URLSearchParams, nowMs: number): PlanQuer
   const time = params.get("time") ?? "";
   const arriveBy = params.get("arriveBy") ?? "0";
   const cursor = params.get("cursor");
-  if (!(isValidStopId(from) || isValidPosition(from)) || !(isValidStopId(to) || isValidPosition(to))) return null;
+  if (!(isAreaStopId(from) || isValidPosition(from)) || !(isAreaStopId(to) || isValidPosition(to))) return null;
   if (from === to) return null;
   const prefs = parsePlanPrefs(params);
   if (!prefs) return null;

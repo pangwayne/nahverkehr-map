@@ -4,6 +4,7 @@
 import type { StopPlace } from "./api";
 import { type LonLat, distanceM } from "./geo";
 import { plateName, townName } from "./names";
+import { isAreaStopId } from "../worker/transitous";
 
 const GERMAN_PREFIX = "de-DELFI_";
 
@@ -27,7 +28,7 @@ export interface Station {
   lon: number;
   lat: number;
   stopIds: string[]; // its platforms; asking for any one returns the whole station
-  planStopId: string; // what a route search uses for this station (see planStopId below)
+  planStopId: string; // what a route search sends for this station: a stop ID or a position (planStopId below)
   hasTram: boolean;
   hasTrain: boolean;
 }
@@ -91,17 +92,20 @@ export function groupStations(places: StopPlace[]): Station[] {
   });
 }
 
-// The stop ID a route search sends for a station: the station's own ID when the stop list has it
-// (Transitous then plans to any of its platforms), else the platform nearest to its middle. Transitous
-// answers 404 for station IDs that are not in the list, so we never make one up (checked 2026-10-24).
+// What a route search sends for a station: the station's own ID when the stop list has it (Transitous then
+// plans to any of its platforms), else the platform nearest to its middle. Transitous answers 404 for station
+// IDs that are not in the list, so we never make one up (checked 2026-10-24). Only IDs the Worker takes for
+// route searches count (isAreaStopId: a district of the area); a station without one (22 in 2026-10, such as
+// "D_000000018173" in Meerbusch or the KD piers) is sent as its position, like an address.
 export function planStopId(stationId: string, platforms: StopPlace[], center: LonLat): string {
   const own = platforms.find((p) => p.stopId === GERMAN_PREFIX + stationId);
-  if (own) return own.stopId;
-  let best = platforms[0]!;
+  if (own && isAreaStopId(own.stopId)) return own.stopId;
+  let best: StopPlace | null = null;
   for (const p of platforms) {
-    if (distanceM(center, [p.lon, p.lat]) < distanceM(center, [best.lon, best.lat])) best = p;
+    if (!isAreaStopId(p.stopId)) continue;
+    if (!best || distanceM(center, [p.lon, p.lat]) < distanceM(center, [best.lon, best.lat])) best = p;
   }
-  return best.stopId;
+  return best?.stopId ?? `${center[1].toFixed(6)},${center[0].toFixed(6)}`;
 }
 
 function average(places: StopPlace[]): LonLat {

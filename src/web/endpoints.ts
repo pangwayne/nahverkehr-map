@@ -21,6 +21,9 @@ export interface RouteRef {
   time: string | null; // "2026-10-24T17:00Z"; null: now
   arriveBy: boolean;
   prefs: Record<string, string>;
+  // An earlier / later page of that search ("LATER|1793003700", the planner's page cursor), so a connection
+  // found with "Later" opens again from a link; absent for the first page.
+  page?: string;
 }
 
 export type View =
@@ -44,6 +47,7 @@ const isTime = (s: string): boolean => {
   const ms = Date.parse(s);
   return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 16) + "Z" === s;
 };
+const PAGE = /^(EARLIER|LATER)\|\d{10}$/;
 const KEY_MAX = 400;
 const PREF_NAMES = new Set(["modes", "maxTransfers", "extra", "walk"]);
 const PREF_VALUE = /^[a-z0-9]{1,4}$/;
@@ -92,6 +96,7 @@ function writeRoute(r: RouteRef, params: URLSearchParams): void {
   if (r.time) params.set("at", r.time);
   if (r.arriveBy) params.set("arr", "1");
   for (const [name, value] of Object.entries(r.prefs)) params.set(name, value);
+  if (r.page) params.set("pg", r.page);
 }
 
 function readRoute(params: URLSearchParams): RouteRef | null {
@@ -109,7 +114,9 @@ function readRoute(params: URLSearchParams): RouteRef | null {
     if (!PREF_VALUE.test(v)) return null;
     prefs[name] = v;
   }
-  return { from, to, time, arriveBy: arr === "1", prefs };
+  const page = params.get("pg");
+  if (page !== null && !PAGE.test(page)) return null;
+  return { from, to, time, arriveBy: arr === "1", prefs, ...(page ? { page } : {}) };
 }
 
 // The part after "#" for a view ("" for none, and for views that cannot go into a link). Version 1.

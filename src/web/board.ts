@@ -45,6 +45,7 @@ import { ageText, resetStatus, setStatus, setStatusNote } from "./status";
 import { startStopLines } from "./stoplines";
 import { type Station, groupStations, matchStation, nearestStations } from "./stops";
 import type { TripRef } from "./tripcard";
+import { isBoardStopId } from "../worker/transitous";
 
 const POLL_MS = 60_000;
 const TICK_MS = 10_000; // countdowns re-render, and the poll timer is checked
@@ -606,8 +607,9 @@ export function startBoard(
   };
 }
 
+// Only where the Worker shows departures (isBoardStopId: North Rhine-Westphalia and Rhineland-Palatinate).
 function oneOffStation(stop: StopRef): Station | null {
-  if (!stop.stopId) return null;
+  if (!stop.stopId || !isBoardStopId(stop.stopId)) return null;
   return {
     id: stop.stopId,
     name: stop.name,

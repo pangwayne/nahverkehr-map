@@ -79,7 +79,7 @@ import { ageText, resetStatus, setStatus, setStatusNote, setStatusTitle } from "
 import { type SearchItem, attachStopSearch } from "./stopsearch";
 import type { Station } from "./stops";
 import type { TripRef } from "./tripcard";
-import { PLAN_AHEAD_MS, PLAN_PAST_MS, isInArea } from "../worker/transitous";
+import { PLAN_AHEAD_MS, PLAN_MAX_TRANSFERS, PLAN_PAST_MS, isAreaStopId, isInArea, isValidPosition } from "../worker/transitous";
 
 const FETCH_TIMEOUT_MS = 15_000;
 const TICK_MS = 10_000; // the age line counts up; an open connection's rides refresh on the minute (follow.ts)
@@ -153,6 +153,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
   let prefs: TravelPrefs = loadPrefs();
   let announce: () => string = () => ""; // the last result announcement, in the language shown
   let pendingKey: string | null = null; // a connection to open once its search has answered (a link, Back)
+  let pendingPage: string | null = null; // the earlier / later page that next search from the form asks for
   // Number of the latest link / saved route being filled in (that waits for the stop list). Closing, opening
   // the panel again or any edit in the form counts up, and the older filling-in then changes nothing.
   let restoreSeq = 0;
@@ -375,7 +376,8 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     alternatives.addEventListener("click", findAlternatives);
     const whole = button("link-button", t().wholeRoute, "whole");
     whole.addEventListener("click", () => fitPoints(map, journeyPath(j), FIT_MAX_ZOOM));
-    actions.append(refresh, alternatives, ...routeActions(j.key), whole);
+    // Walking all the way has no live times: nothing to refresh.
+    actions.append(...(followed ? [refresh] : []), alternatives, ...routeActions(j.key), whole);
     foot.append(actions);
     nodes.push(foot);
     return nodes;
@@ -691,7 +693,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       s.sel.replaceChildren(...s.values.map((v) => el("option", "", text(v))));
       s.sel.selectedIndex = Math.max(0, s.values.indexOf(current));
     };
-    fill(o.transfers, x.prefsTransfers, (v) => (v === null ? x.prefsAny : v === 0 ? x.prefsDirectOnly : x.prefsAtMost(v)), prefs.maxTransfers);
+    fill(o.transfers, x.prefsTransfers, (v) => (v === null ? x.prefsDefaultMax(PLAN_MAX_TRANSFERS) : v === 0 ? x.prefsDirectOnly : x.prefsAtMost(v)), prefs.maxTransfers);
     fill(o.extra, x.prefsExtra, (v) => (v ? `+ ${v} min` : x.prefsNormal), prefs.extraMin);
     fill(o.walk, x.prefsWalk, (v) => x.prefsUpTo(v ?? 0), prefs.walkMin);
     o.note.textContent = x.prefsNote;
@@ -822,8 +824,12 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       }
       submitted = { ...lastSearch, request };
     } else {
+      const page = pendingPage; // used once, by this search only
+      pendingPage = null;
       const request = checkForm();
       if (!request) return;
+      // A link to a connection found with "Later": the same page of the same search.
+      if (page) request.cursor = page;
       // checkForm only passes with both ends picked
       const from = b.from.place!;
       const to = b.to.place!;
@@ -903,7 +909,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     if (pendingKey !== null) {
       const key = pendingKey;
       pendingKey = null;
-      const j = outcome.kind === "plan" ? outcome.plan.journeys.find((x) => x.key === key) : undefined;
+      const j = outcome.kind === "plan" ? findJourney(outcome.plan, key) : undefined;
       if (j) {
         showDetails(j);
         return;
@@ -934,6 +940,11 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     if (!from) return refuse(t().routePickFrom, b.from.input);
     if (!to) return refuse(t().routePickTo, b.to.input);
     if (placeParam(from) === placeParam(to)) return refuse(t().routeSameStop, b.to.input);
+    // A stop outside the area (opened from a trip card): the Worker plans only inside it.
+    for (const [place, input] of [[from, b.from.input], [to, b.to.input]] as const) {
+      const sent = placeParam(place);
+      if (!isAreaStopId(sent) && !isValidPosition(sent)) return refuse(t().routeStopOutside, input);
+    }
 
     let ms = Date.now();
     if (b.isNow) {
@@ -1243,7 +1254,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     applyTexts();
     const key = view.kind === "journey" ? view.key : null;
     if (lastSearch && outcome.kind === "plan" && sameRoute(refOf(lastSearch), view.route)) {
-      const j = key ? outcome.plan.journeys.find((x) => x.key === key) : undefined;
+      const j = key ? findJourney(outcome.plan, key) : undefined;
       if (j) showDetails(j);
       else showList(detail ? optionKey(detail) : undefined);
       return;
@@ -1280,6 +1291,10 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
         return;
       }
       pendingKey = key;
+      // A page only while the planner still has it (the Worker takes cursors from 2 hours back); an older
+      // link starts at the first page, and its connection is then most likely gone (said so).
+      const page = view.route.page;
+      pendingPage = page && Number(page.split("|")[1]) * 1000 >= Date.now() - PLAN_PAST_MS ? page : null;
       void search(null);
     })();
   }
@@ -1378,6 +1393,7 @@ function refOf(s: SubmittedSearch): RouteRef {
     time: s.isNow ? null : s.request.time,
     arriveBy: s.request.arriveBy,
     prefs: s.request.prefs ?? {},
+    ...(s.request.cursor ? { page: s.request.cursor } : {}),
   };
 }
 
@@ -1387,6 +1403,11 @@ function shared(r: RouteRef): RouteRef {
   return { ...r, from: strip(r.from), to: strip(r.to) };
 }
 
+// A connection of an answer by its key: one with rides, or walking all the way.
+function findJourney(plan: Plan, key: string): Journey | undefined {
+  return plan.journeys.find((x) => x.key === key) ?? (plan.walk?.key === key ? plan.walk : undefined);
+}
+
 function sameRoute(a: RouteRef, b: RouteRef): boolean {
   const ends = (x: EndRef | null, y: EndRef | null) => (x === null && y === null) || sameEnd(x, y);
   return (
@@ -1394,6 +1415,7 @@ function sameRoute(a: RouteRef, b: RouteRef): boolean {
     ends(a.to, b.to) &&
     a.time === b.time &&
     a.arriveBy === b.arriveBy &&
+    (a.page ?? null) === (b.page ?? null) &&
     JSON.stringify(Object.entries(a.prefs).sort()) === JSON.stringify(Object.entries(b.prefs).sort())
   );
 }

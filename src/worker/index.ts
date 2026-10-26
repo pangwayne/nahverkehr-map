@@ -14,7 +14,7 @@ import {
   buildStopsUrl,
   buildTripUrl,
   isValidDeparturesCursor,
-  isValidStopId,
+  isBoardStopId,
   isValidTripId,
   parseGeocodeQuery,
   parsePlanQuery,
@@ -37,9 +37,12 @@ const LIVE_BROWSER_MAX_AGE_S = 10;
 const PLAN_FRESH_S = 60;
 const PLAN_STALE_LIMIT_S = 120;
 
-// Addresses and places hardly change: one shared answer per typed text for a day.
+// Addresses and places hardly change: one shared answer per typed text for a day. The searched text can be
+// someone's address, so no copy is kept longer than that, not even as a fallback (the privacy page says so).
+// GEOCODE_CACHE_VERSION is part of the keys: raising it leaves older copies unused.
 const GEOCODE_FRESH_S = DAY_S;
-const GEOCODE_STALE_LIMIT_S = 7 * DAY_S;
+const GEOCODE_STALE_LIMIT_S = DAY_S;
+const GEOCODE_CACHE_VERSION = "2";
 const GEOCODE_BROWSER_MAX_AGE_S = 3600;
 
 // A failed answer is remembered too, so repeated requests for it do not all reach Transitous:
@@ -137,7 +140,7 @@ async function api(
   if (url.pathname === "/api/geocode") {
     const q = parseGeocodeQuery(url.searchParams);
     if (!q) return Response.json({ error: "invalid search" }, { status: 400 });
-    const key = new URLSearchParams({ text: q.text, lang: q.lang });
+    const key = new URLSearchParams({ text: q.text, lang: q.lang, v: GEOCODE_CACHE_VERSION });
     return cachedProxy(ctx, allowed, {
       upstreamUrl: buildGeocodeUrl(q),
       bucketKey: `${base}?${key}&fresh`,
@@ -151,7 +154,7 @@ async function api(
 
   if (url.pathname === "/api/departures") {
     const stopId = url.searchParams.get("stopId") ?? "";
-    if (!isValidStopId(stopId)) {
+    if (!isBoardStopId(stopId)) {
       return Response.json({ error: "invalid stopId" }, { status: 400 });
     }
     const cursor = url.searchParams.get("cursor");
