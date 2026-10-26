@@ -242,7 +242,7 @@ export function startTripCard(map: maplibregl.Map, onStopTap: (stop: StopRef) =>
 
     if (error && age > STALE_AFTER_S) parts.push(el("p", "board-note board-error", t().tripUnavailable));
 
-    const notices = noticeList(collectNotices([route.alerts], now), MAX_NOTICES);
+    const notices = noticeList(collectNotices([route.alerts, ...route.stops.map((s) => s.alerts)], now), MAX_NOTICES);
     if (notices) parts.push(notices);
 
     // Passed stops are folded away (all but the last one), so the summary stays at the top. Before the

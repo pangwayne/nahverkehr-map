@@ -18,6 +18,7 @@ export interface RouteStop {
   schedArrMs: number | null;
   schedDepMs: number | null;
   cancelled: boolean;
+  alerts: Alert[]; // notices for this stop only
 }
 
 export interface TripRoute {
@@ -32,7 +33,7 @@ export interface TripRoute {
   stops: RouteStop[];
   // First stop whose live times looked wrong (Phase 4.8); from there on, the stop times are the timetable.
   implausibleFrom: number | null;
-  alerts: Alert[]; // the trip's notices and its stops'
+  alerts: Alert[]; // the trip's own notices (each stop's are on the stop)
 }
 
 export type TripState = "before" | "moving" | "atStop" | "ended";
@@ -58,12 +59,15 @@ function toStop(p: TripStopPlace): RouteStop {
     schedArrMs: ms(p.scheduledArrival),
     schedDepMs: ms(p.scheduledDeparture),
     cancelled: p.cancelled === true,
+    alerts: p.alerts ?? [],
   };
 }
 
 // Join all legs into one route. Where one leg ends and the next starts at the same stop,
 // that stop appears once (arrival from the first leg, departure from the second).
+// Null for an answer without legs (also a broken one: "{}").
 export function tripRoute(itinerary: Itinerary): TripRoute | null {
+  if (!Array.isArray(itinerary?.legs)) return null;
   const first = itinerary.legs[0];
   if (!first) return null;
 
@@ -72,13 +76,14 @@ export function tripRoute(itinerary: Itinerary): TripRoute | null {
   const alerts: Alert[] = [];
   for (const leg of itinerary.legs) {
     const places = [leg.from, ...(leg.intermediateStops ?? []), leg.to];
-    alerts.push(...(leg.alerts ?? []), ...places.flatMap((p) => p.alerts ?? []));
+    alerts.push(...(leg.alerts ?? []));
     const legStops = places.map(toStop);
     const prev = stops[stops.length - 1];
     const start = legStops[0]!;
     if (prev && prev.name === start.name && prev.depMs === null) {
       prev.depMs = start.depMs;
       prev.schedDepMs = start.schedDepMs;
+      prev.alerts = [...prev.alerts, ...start.alerts];
       legStops.shift();
     }
     stops.push(...legStops);

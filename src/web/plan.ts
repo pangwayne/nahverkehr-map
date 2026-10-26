@@ -7,7 +7,7 @@ import { planTime } from "./berlintime";
 import { hexOrNull, isHiddenMode, lineName, platformLabel, plannedPlatform, tooEarly } from "./departures";
 import type { EndRef } from "./endpoints";
 import { type LonLat, decodePolyline } from "./geo";
-import { type TripRoute, leaveMs, reachMs } from "./trip";
+import { type RouteStop, type TripRoute, leaveMs, reachMs } from "./trip";
 import { PLAN_PAST_MS } from "../worker/transitous";
 
 export interface LegStop {
@@ -395,6 +395,8 @@ export function departed(j: Journey, nowMs: number): boolean {
 
 // One ride with fresh times from its trip (/api/trip), or null when its stops cannot be found on the trip.
 // The stops are matched by ID, else by name; the destination stop must come after the boarding stop.
+// Platforms and notices come from the trip too: the trip's own notices and those of the two stops used (not
+// every stop along the way). The ride's line on the map stays as searched (a trip has no piece for one ride).
 export function updateRide(leg: RideLeg, route: TripRoute): RideLeg | null {
   const find = (s: LegStop, from: number) => {
     const byId = s.stopId ? route.stops.findIndex((r, i) => i >= from && r.stopId === s.stopId) : -1;
@@ -409,12 +411,39 @@ export function updateRide(leg: RideLeg, route: TripRoute): RideLeg | null {
   const arrMs = reachMs(alight);
   if (depMs === null || arrMs === null) return null;
   const onTimetable = route.implausibleFrom !== null && route.implausibleFrom <= a;
+  const from: LegStop = {
+    ...freshStop(leg.from, board, leg.mode),
+    ms: depMs,
+    schedMs: board.schedDepMs ?? board.schedArrMs ?? leg.from.schedMs,
+  };
+  const to: LegStop = {
+    ...freshStop(leg.to, alight, leg.mode),
+    ms: arrMs,
+    schedMs: alight.schedArrMs ?? alight.schedDepMs ?? leg.to.schedMs,
+  };
   return {
     ...leg,
     realTime: route.realTime && !onTimetable,
     cancelled: route.cancelled || board.cancelled || alight.cancelled,
-    from: { ...leg.from, ms: depMs, schedMs: board.schedDepMs ?? board.schedArrMs ?? leg.from.schedMs, cancelled: board.cancelled },
-    to: { ...leg.to, ms: arrMs, schedMs: alight.schedArrMs ?? alight.schedDepMs ?? leg.to.schedMs, cancelled: alight.cancelled },
+    from,
+    to,
+    alerts: [...route.alerts, ...from.alerts, ...to.alerts],
+  };
+}
+
+// A ride's stop with what its trip says now: the stop (a changed platform can be another stop ID), the
+// platform and its notices. A platform the trip cannot name stays as it was when the stop is the same one.
+function freshStop(old: LegStop, s: RouteStop, mode: Mode): LegStop {
+  const stopId = s.stopId ?? old.stopId;
+  const platform = platformLabel(stopId, mode, s);
+  const same = stopId === old.stopId;
+  return {
+    ...old,
+    stopId,
+    platform: platform ?? (same ? old.platform : null),
+    plannedPlatform: platform ? plannedPlatform(stopId, mode, s) : same ? old.plannedPlatform : null,
+    cancelled: s.cancelled,
+    alerts: s.alerts ?? [],
   };
 }
 
@@ -450,24 +479,37 @@ export function withRides(j: Journey, rides: Map<RideLeg, RideLeg>): Journey {
   };
 }
 
-// What a refresh changed, ride by ride: delays (whole minutes) that moved, and newly cancelled rides.
+// What a refresh changed, ride by ride: newly cancelled; live times lost (then no delay is claimed: no live
+// data is not "on time"); a delay leaving or arriving (whole minutes) that moved; a platform that changed.
 export interface RideChange {
   line: string;
+  kind: "cancelled" | "noLive" | "delay" | "arrival" | "platform" | "arrPlatform";
   beforeMin: number;
   afterMin: number;
-  cancelled: boolean;
+  platform: string | null; // the new platform, for "platform" and "arrPlatform"
 }
 
 export function rideChanges(before: Journey, after: Journey): RideChange[] {
   const a = before.legs.filter((l): l is RideLeg => l.kind === "ride");
   const b = after.legs.filter((l): l is RideLeg => l.kind === "ride");
   const out: RideChange[] = [];
-  const delay = (r: RideLeg) => Math.round((r.from.ms - r.from.schedMs) / 60_000);
+  const minutes = (s: LegStop) => Math.round((s.ms - s.schedMs) / 60_000);
   a.forEach((old, i) => {
     const now = b[i];
     if (!now) return;
-    if (now.cancelled && !old.cancelled) out.push({ line: now.line, beforeMin: delay(old), afterMin: delay(now), cancelled: true });
-    else if (delay(now) !== delay(old)) out.push({ line: now.line, beforeMin: delay(old), afterMin: delay(now), cancelled: false });
+    const change = (kind: RideChange["kind"], beforeMin = 0, afterMin = 0, platform: string | null = null) =>
+      out.push({ line: now.line, kind, beforeMin, afterMin, platform });
+    if (now.cancelled) {
+      if (!old.cancelled) change("cancelled");
+      return;
+    }
+    if (old.realTime && !now.realTime) change("noLive");
+    else if (now.realTime) {
+      if (minutes(now.from) !== minutes(old.from)) change("delay", minutes(old.from), minutes(now.from));
+      else if (minutes(now.to) !== minutes(old.to)) change("arrival", minutes(old.to), minutes(now.to));
+    }
+    if (now.from.platform && now.from.platform !== old.from.platform) change("platform", 0, 0, now.from.platform);
+    if (now.to.platform && now.to.platform !== old.to.platform) change("arrPlatform", 0, 0, now.to.platform);
   });
   return out;
 }

@@ -34,6 +34,7 @@ import {
   offsetClearOfPanel,
   openPanel,
   ownsPanel,
+  panelChanges,
   renderPanel,
   shareLink,
 } from "./panel";
@@ -53,6 +54,9 @@ const STALE_AFTER_S = 120;
 const ROWS_PER_STATION = 8;
 const ROWS_NEARBY = 12;
 const MAX_LATER_PAGES = 3; // "later departures" a few times; past that, the route search is the better tool
+// Later pages are not refreshed by the minute (only the first page is). Their age counts for the board's age
+// line, and after this long they are dropped: "Later departures" fetches them fresh again.
+const LATER_KEEP_MS = 5 * 60_000;
 const FILTER_MIN_LINES = 4; // fewer lines than this need no filter
 const MAX_NOTICES = 3;
 // Back on the same board within this time (from a trip card, say): keep what was fetched.
@@ -80,6 +84,8 @@ interface Result {
   cursor: string | null; // the next page after everything loaded so far
   pages: number; // later pages loaded
   fetchedAtMs: number | null;
+  laterFetchedAtMs: number | null; // the oldest later page; null without any
+  laterStale: boolean; // a later page came as a stale copy
   error: string | null;
 }
 
@@ -270,6 +276,8 @@ export function startBoard(
           r.laterRows = mergeRows([r.laterRows, toRows(res.data.stopTimes)]);
           r.cursor = res.data.nextPageCursor ?? null;
           r.pages++;
+          r.laterFetchedAtMs = Math.min(r.laterFetchedAtMs ?? Infinity, res.fetchedAtMs);
+          r.laterStale ||= isStale(res);
         } catch {
           // The button stays; another tap tries again.
         }
@@ -323,13 +331,17 @@ export function startBoard(
         try {
           const res = await fetchDepartures(station.stopIds[0]!, AbortSignal.timeout(FETCH_TIMEOUT_MS));
           if (gen !== generation) return;
+          // Later pages stay a while (see LATER_KEEP_MS); the first page's cursor counts only until a later
+          // page has been loaded.
+          const later = prev?.pages && prev.laterFetchedAtMs !== null && Date.now() - prev.laterFetchedAtMs < LATER_KEEP_MS ? prev : null;
           results.set(station.id, {
             rows: toRows(res.data.stopTimes),
-            // Later pages stay; the first page's cursor counts only until a later page has been loaded.
-            laterRows: prev?.laterRows ?? [],
-            cursor: prev?.pages ? prev.cursor : (res.data.nextPageCursor ?? null),
-            pages: prev?.pages ?? 0,
+            laterRows: later?.laterRows ?? [],
+            cursor: later ? later.cursor : (res.data.nextPageCursor ?? null),
+            pages: later?.pages ?? 0,
             fetchedAtMs: res.fetchedAtMs,
+            laterFetchedAtMs: later?.laterFetchedAtMs ?? null,
+            laterStale: later?.laterStale ?? false,
             error: isStale(res) ? "stale copy from the Worker" : null,
           });
         } catch (err) {
@@ -340,6 +352,8 @@ export function startBoard(
             cursor: prev?.cursor ?? null,
             pages: prev?.pages ?? 0,
             fetchedAtMs: prev?.fetchedAtMs ?? null,
+            laterFetchedAtMs: prev?.laterFetchedAtMs ?? null,
+            laterStale: prev?.laterStale ?? false,
             error: String(err),
           });
         }
@@ -498,12 +512,16 @@ export function startBoard(
     if (noticeBox) parts.push(noticeBox);
 
     const limit = nearby ? ROWS_NEARBY : ROWS_PER_STATION;
-    const all = upcoming(mergeRows(got.flatMap((r) => [r.rows, r.laterRows])), now, Infinity);
+    // A trip on a fresh first page and on an older later page (the first page has moved on): the fresh row.
+    const fresh = got.flatMap((r) => r.rows);
+    const freshTrips = new Set(fresh.map(rowKey));
+    const later = got.flatMap((r) => r.laterRows).filter((row) => !freshTrips.has(rowKey(row)));
+    const all = upcoming(mergeRows([fresh, later]), now, Infinity);
     const filterBox = lineFilter(all);
     if (filterBox) parts.push(filterBox);
     const matching = filter.size ? all.filter((r) => filter.has(lineKey(r))) : all;
     const rows = showAll ? matching : matching.slice(0, limit);
-    const anyError = got.some((r) => r.error !== null);
+    const anyError = got.some((r) => r.error !== null || (r.laterRows.length > 0 && r.laterStale));
     const sameStop = nearby ? null : (shown[0]?.station.name ?? null);
     // Faint lines only for the first rows: "more" must not start more background requests.
     stopLines.add(all.slice(0, limit));
@@ -538,7 +556,9 @@ export function startBoard(
     }
 
     // Data age, like the vehicle status line (the oldest answer counts). Never show old data as current.
-    const times = got.map((r) => r.fetchedAtMs).filter((t): t is number => t !== null);
+    const times = got
+      .flatMap((r) => [r.fetchedAtMs, r.laterRows.length ? r.laterFetchedAtMs : null])
+      .filter((t): t is number => t !== null);
     const ageS = times.length ? Math.max(0, (now - Math.min(...times)) / 1000) : null;
     setStatus(heading, ageS, anyError);
     if (anyError && (ageS === null || ageS > STALE_AFTER_S)) {
@@ -560,8 +580,13 @@ export function startBoard(
       else showMessage(() => shortName(stop.name), () => t().noBoardForStop);
     },
     showStation,
+    // Something else on the board meanwhile (another stop, closing, another panel): that wins, and an old
+    // link's stop is not opened over it (true: nothing to report).
     async showStationId(id: string): Promise<boolean> {
+      const gen = generation;
+      const seen = panelChanges();
       await stationsReady;
+      if (gen !== generation || panelChanges() !== seen) return true;
       const station = byId.get(id);
       if (!station) return false;
       showStation(station, true, false);

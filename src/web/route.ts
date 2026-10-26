@@ -10,6 +10,7 @@
 import type * as maplibregl from "maplibre-gl";
 import { collectNotices } from "./alerts";
 import { type Mode, type PlanRequest, PlanError, fetchPlan, fetchTrip, isStale } from "./api";
+import { type Followed, dueForRefresh, follow, followEnded, refreshFollowed } from "./follow";
 import { berlinDateTime, fromBerlin, planTime } from "./berlintime";
 import type { Board } from "./board";
 import { badgeTextColor, delayLevel, delayState, formatDelay, modeLabel } from "./departures";
@@ -58,10 +59,7 @@ import {
   planFailure,
   positionPlace,
   refreshRequest,
-  rideChanges,
   transfersOf,
-  updateRide,
-  withRides,
 } from "./plan";
 import {
   DEFAULT_PREFS,
@@ -80,13 +78,11 @@ import { type SavedRoute, isRouteSaved, isStopSaved, loadSaved, onSavedChange, s
 import { ageText, resetStatus, setStatus, setStatusNote, setStatusTitle } from "./status";
 import { type SearchItem, attachStopSearch } from "./stopsearch";
 import type { Station } from "./stops";
-import { tripRoute } from "./trip";
 import type { TripRef } from "./tripcard";
 import { PLAN_AHEAD_MS, PLAN_PAST_MS, isInArea } from "../worker/transitous";
 
 const FETCH_TIMEOUT_MS = 15_000;
-const TICK_MS = 10_000; // the age line counts up; an open connection's rides refresh on the minute
-const DETAIL_POLL_MS = 60_000;
+const TICK_MS = 10_000; // the age line counts up; an open connection's rides refresh on the minute (follow.ts)
 const STALE_AFTER_S = 120;
 // A fix less sure than this gets a warning (it still counts): the walk and the stop may then be wrong.
 const ROUGH_LOCATION_M = 300;
@@ -129,16 +125,6 @@ type Outcome =
     }
   | { kind: "failed"; failure: PlanFailure; retryAfterS: number | null };
 
-// An open connection kept current through its rides' trips.
-interface Followed {
-  origin: Journey; // as the search found it, to say what changed since
-  fetchedAtMs: number; // the oldest of its rides' data
-  lastTryMs: number;
-  failed: boolean; // the last refresh did not reach every ride
-  busy: boolean;
-  changes: RideChange[];
-}
-
 // `openTrip`: a ride in a connection's details was tapped (opens its trip card, which can come back here).
 export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: TripRef) => void): RoutePanel {
   const user: PanelUser = { onClose };
@@ -146,6 +132,10 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
   map.on("load", () => journeyMap.addLayers());
   let detail: Journey | null = null; // the connection whose details are open (kept while its trip card is open)
   let followed: Followed | null = null;
+  // Each connection of the answer on screen that has been opened, kept current: opening it again (from the
+  // list, or back from a ride's trip card) goes on with its times and its refresh state.
+  let follows = new Map<string, Followed>();
+  let goneShown = 0; // connections listed as already left, at the last redraw
   let detailSeq = 0;
   let pinned: Journey | null = null; // the connection someone was following when they asked for alternatives
   let built: ReturnType<typeof buildForm> | null = null;
@@ -163,6 +153,9 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
   let prefs: TravelPrefs = loadPrefs();
   let announce: () => string = () => ""; // the last result announcement, in the language shown
   let pendingKey: string | null = null; // a connection to open once its search has answered (a link, Back)
+  // Number of the latest link / saved route being filled in (that waits for the stop list). Closing, opening
+  // the panel again or any edit in the form counts up, and the older filling-in then changes nothing.
+  let restoreSeq = 0;
 
   onLangChange(() => {
     if (!built) return;
@@ -179,12 +172,16 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
   });
   setInterval(() => {
     if (!ownsPanel(user)) return;
-    if (detail && followed && document.visibilityState === "visible" && Date.now() - followed.lastTryMs >= DETAIL_POLL_MS) {
+    const now = Date.now();
+    if (detail && followed && document.visibilityState === "visible" && dueForRefresh(followed, now)) {
       void refreshDetail();
-    } else if (outcome.kind === "plan") renderStatus();
+    } else if (!detail && outcome.kind === "plan" && goneCount(outcome.plan, now) !== goneShown) {
+      render(); // a connection has left meanwhile: it moves down to the ones already gone
+    } else if (outcome.kind === "plan" || followed) renderStatus();
   }, TICK_MS);
 
   function open(ends: { from?: Station | Spot; to?: Station | Spot } = {}): void {
+    restoreSeq++;
     built ??= buildForm();
     if (ends.from) {
       cancelLocate(false);
@@ -231,23 +228,26 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
 
   // One connection in full, and drawn on the map. `fit`: also move the map to show all of it.
   // `follow`: it was just opened (not redrawn): start keeping it current.
-  function showDetails(j: Journey, fit = true, follow = true): void {
-    if (follow) {
+  function showDetails(j: Journey, fit = true, start = true): void {
+    if (start) {
       detailSeq++;
       // Only rides have live times to follow; walking all the way has nothing to refresh.
       const rides = j.legs.some((l) => l.kind === "ride" && l.tripId !== null);
-      followed = !rides ? null : {
-        origin: j,
-        fetchedAtMs: outcome.kind === "plan" ? outcome.fetchedAtMs : Date.now(),
-        lastTryMs: Date.now(),
-        failed: false,
-        busy: false,
-        changes: [],
-      };
+      followed = rides ? (follows.get(j.key) ?? startFollowing(j)) : null;
+      if (followed) j = followed.journey;
     }
+    // Walking directions someone opened stay open when the same connection is drawn again (a refresh).
+    const opened =
+      detail?.key === j.key
+        ? [...document.querySelectorAll<HTMLElement>("#board-body details.walk-steps[open]")].map((d) => d.dataset["walk"])
+        : [];
     detail = j;
     const title = lastSearch ? searchName(lastSearch) : routeName();
     renderPanel(user, title, detailNodes(j));
+    for (const k of opened) {
+      const d = document.querySelector<HTMLDetailsElement>(`#board-body details.walk-steps[data-walk="${k}"]`);
+      if (d) d.open = true;
+    }
     journeyMap.show(j, lastSearch ? { from: endName(lastSearch.from), to: endName(lastSearch.to) } : undefined);
     if (fit) {
       document.querySelector("#board")!.scrollTop = 0; // the list may have been scrolled down
@@ -272,6 +272,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
   }
 
   function onClose(): void {
+    restoreSeq++;
     controller?.abort();
     controller = null;
     if (outcome.kind === "searching") outcome = { kind: "none" };
@@ -282,47 +283,31 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     resetStatus();
   }
 
-  // Fresh times for the open connection: each ride's trip, then the walks move along. The connection stays the
-  // same one (no other departure is picked); failures keep the last times with their age.
+  // Opening a connection is no refresh: it keeps the age and a failed refresh of the answer it came from.
+  function startFollowing(j: Journey): Followed {
+    const f =
+      outcome.kind === "plan"
+        ? follow(j, outcome.fetchedAtMs, outcome.refreshFailed, Date.now())
+        : follow(j, Date.now(), false, Date.now());
+    follows.set(j.key, f);
+    return f;
+  }
+
+  // Fresh times for the open connection (follow.ts). Failures keep the last times with their age.
   async function refreshDetail(): Promise<void> {
-    const j = detail;
     const f = followed;
-    if (!j || !f || f.busy) return;
+    if (!detail || !f || f.busy) return;
     const mine = ++detailSeq;
-    f.busy = true;
-    f.lastTryMs = Date.now();
-    renderDetailFoot();
-    const rides = j.legs.filter((l): l is RideLeg => l.kind === "ride" && l.tripId !== null);
-    const answers = await Promise.allSettled(rides.map((r) => fetchTrip(r.tripId!, AbortSignal.timeout(FETCH_TIMEOUT_MS))));
-    if (mine !== detailSeq || detail !== j) return;
-    const updated = new Map<RideLeg, RideLeg>();
-    let failed = false;
-    let oldest = Infinity;
-    answers.forEach((a, i) => {
-      if (a.status !== "fulfilled") {
-        failed = true;
-        return;
-      }
-      const route = tripRoute(a.value.data);
-      const next = route ? updateRide(rides[i]!, route) : null;
-      if (!next) {
-        failed = true;
-        return;
-      }
-      if (isStale(a.value)) failed = true;
-      oldest = Math.min(oldest, a.value.fetchedAtMs);
-      updated.set(rides[i]!, next);
-    });
-    const next = withRides(j, updated);
-    f.busy = false;
-    f.failed = failed;
-    if (!failed && Number.isFinite(oldest)) f.fetchedAtMs = oldest;
-    f.changes = rideChanges(f.origin, next);
+    const done = refreshFollowed(f, (id) => fetchTrip(id, AbortSignal.timeout(FETCH_TIMEOUT_MS)));
+    renderDetailFoot(); // "loading" (busy is set by now)
+    await done;
+    const next = f.journey;
     // The list shows the fresh times too, when going back to it.
     if (outcome.kind === "plan") {
       outcome.plan = { ...outcome.plan, journeys: outcome.plan.journeys.map((x) => (x.key === next.key ? next : x)) };
     }
     if (pinned?.key === next.key) pinned = next;
+    if (mine !== detailSeq || followed !== f || !ownsPanel(user)) return;
     showDetails(next, false, false);
   }
 
@@ -476,7 +461,8 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
 
     if (leg.steps.length > 1 || leg.steps.some((s) => s.kind === "stairs" || s.kind === "elevator")) {
       const details = el("details", "walk-steps");
-      details.append(el("summary", "", t().walkDirections(leg.steps.length)));
+      details.dataset["walk"] = String(i);
+      details.append(focusKey(el("summary", "", t().walkDirections(leg.steps.length)), `walk-steps-${i}`));
       const ol = el("ol", "");
       for (const step of leg.steps) ol.append(el("li", `step ${step.kind}`, stepText(step)));
       details.append(ol);
@@ -515,6 +501,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     from.row.append(locate);
     const swap = iconButton("route-swap", SWAP_ICON);
     swap.addEventListener("click", () => {
+      restoreSeq++;
       cancelLocate(true);
       const a = fromState.place;
       const aText = fromState.input.value;
@@ -574,8 +561,11 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     const submit = el("button", "route-submit") as HTMLButtonElement;
     submit.type = "submit";
     form.append(from.wrap, to.wrap, hereNote, when, options.box, error, submit);
+    // Typing, picking a time or a setting: the user's own edits win over a link still being filled in.
+    form.addEventListener("input", () => restoreSeq++);
     form.addEventListener("submit", (e) => {
       e.preventDefault();
+      restoreSeq++;
       pinned = null;
       void search(null);
     });
@@ -615,6 +605,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     };
 
     const picked = () => {
+      restoreSeq++;
       fieldError = null;
       render();
     };
@@ -860,6 +851,9 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       const res = await fetchPlan(request, mine.signal);
       if (controller !== mine) return;
       lastSearch = submitted;
+      // New times for every connection: they are followed afresh when opened (the pinned one goes on).
+      const keep = pinned ? follows.get(pinned.key) : undefined;
+      follows = new Map(keep ? [[keep.journey.key, keep]] : []);
       // A stale copy (first search, page or refresh) is shown, but marked: the latest try for news failed.
       outcome = {
         kind: "plan",
@@ -1082,6 +1076,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       // marked, so they are not taken for something still to catch.
       const coming = plan.journeys.filter((j) => !departed(j, now));
       const gone = plan.journeys.filter((j) => departed(j, now));
+      goneShown = gone.length;
       const list = el("ul", "route-options");
       const walk = plan.walk;
       if (walk) list.append(walkOption(walk, () => openDetails(walk)));
@@ -1170,7 +1165,9 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       ? `${ageText(ageS, old)} · ${t().loading}`
       : followed.failed
         ? ageText(ageS, old, true)
-        : `${ageText(ageS, old)} · ${t().everyMinute}`;
+        : followEnded(followed, Date.now())
+          ? `${ageText(ageS, old)} · ${t().followEnded}`
+          : `${ageText(ageS, old)} · ${t().everyMinute}`;
     slot?.replaceChildren(ageLine(text, old || followed.failed));
   }
 
@@ -1182,9 +1179,12 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
   }
 
   // Fill the form from route ends (a saved route, a link). Stops are looked up in the stop list; My location
-  // is asked for again. Returns false when an end cannot be used (an unknown stop).
-  async function fillEnds(ends: { from: EndRef | null; to: EndRef | null }): Promise<boolean> {
+  // is asked for again. Returns false when an end cannot be used (an unknown stop), null when something newer
+  // happened while the stop list was loading (see restoreSeq): then nothing is filled in.
+  async function fillEnds(ends: { from: EndRef | null; to: EndRef | null }): Promise<boolean | null> {
+    const mine = ++restoreSeq;
     await board.stationsReady;
+    if (mine !== restoreSeq || !ownsPanel(user)) return null;
     const b = built!;
     let ok = true;
     const toPlace = (e: EndRef | null): Place | null => {
@@ -1213,7 +1213,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     pushView({ kind: "route", route: { from: r.from, to: r.to, time: null, arriveBy: false, prefs: r.prefs } });
     void (async () => {
       const ok = await fillEnds(r);
-      if (!ownsPanel(user)) return;
+      if (ok === null) return;
       setPrefs(prefsFromQuery(r.prefs), false);
       built!.isNow = true;
       built!.arrive.input.checked = false;
@@ -1251,18 +1251,21 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     showList();
     void (async () => {
       const ok = await fillEnds(view.route);
-      if (!ownsPanel(user)) return;
+      if (ok === null) return;
       setPrefs(prefsFromQuery(view.route.prefs), false);
       const b = built!;
       b.arrive.input.checked = view.route.arriveBy;
       b.depart.input.checked = !view.route.arriveBy;
       b.isNow = view.route.time === null;
       if (view.route.time) {
-        const ms = Date.parse(view.route.time);
+        const ms = Date.parse(view.route.time); // a real time (parseViewHash checks)
         const { date, time } = berlinDateTime(ms);
         b.date.value = date;
         b.time.value = time;
-        if (ms < Date.now() - PLAN_PAST_MS) b.isNow = true; // an old link: from now instead
+        if (ms < Date.now() - PLAN_PAST_MS) {
+          b.isNow = true; // an old link: from now instead, and said so
+          toast(t().linkFromNow);
+        }
       }
       if (b.isNow) fillNow();
       folded = false;
@@ -1477,9 +1480,26 @@ function transferText(c: Transfer): string {
 }
 
 function changeText(c: RideChange): string {
-  if (c.cancelled) return t().rideNowCancelled(c.line);
   const fmt = (m: number) => (m ? formatDelay(m * 60) : t().onTimeShort);
-  return t().rideDelayChanged(c.line, fmt(c.afterMin), fmt(c.beforeMin));
+  switch (c.kind) {
+    case "cancelled":
+      return t().rideNowCancelled(c.line);
+    case "noLive":
+      return t().rideNoLive(c.line);
+    case "arrival":
+      return t().rideArrivalChanged(c.line, fmt(c.afterMin), fmt(c.beforeMin));
+    case "platform":
+      return t().ridePlatformChanged(c.line, c.platform ?? "");
+    case "arrPlatform":
+      return t().rideArrPlatformChanged(c.line, c.platform ?? "");
+    default:
+      return t().rideDelayChanged(c.line, fmt(c.afterMin), fmt(c.beforeMin));
+  }
+}
+
+// How many connections have left by `nowMs` (they are listed apart).
+function goneCount(plan: Plan, nowMs: number): number {
+  return plan.journeys.filter((j) => departed(j, nowMs)).length;
 }
 
 function stepText(s: { kind: string; street: string; distanceM: number }): string {

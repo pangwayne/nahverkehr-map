@@ -37,6 +37,13 @@ const NAME_MAX = 80;
 const COLOR = /^#[0-9a-f]{6}$/i;
 const LINE = /^[\p{L}\p{N} ./+-]{1,12}$/u;
 const TIME = /^20\d{2}-[01]\d-[0-3]\dT[0-2]\d:[0-5]\dZ$/;
+// A real UTC minute in that form (not 30 February or hour 29): it reads back as the same text. How old it may
+// be is not checked here; an old link is still a link (the route panel searches from now instead).
+const isTime = (s: string): boolean => {
+  if (!TIME.test(s)) return false;
+  const ms = Date.parse(s);
+  return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 16) + "Z" === s;
+};
 const KEY_MAX = 400;
 const PREF_NAMES = new Set(["modes", "maxTransfers", "extra", "walk"]);
 const PREF_VALUE = /^[a-z0-9]{1,4}$/;
@@ -92,7 +99,7 @@ function readRoute(params: URLSearchParams): RouteRef | null {
   const to = readEnd(params.get("to"));
   if ((params.has("from") && !from) || (params.has("to") && !to)) return null;
   const time = params.get("at");
-  if (time !== null && !TIME.test(time)) return null;
+  if (time !== null && !isTime(time)) return null;
   const arr = params.get("arr");
   if (arr !== null && arr !== "1") return null;
   const prefs: Record<string, string> = {};

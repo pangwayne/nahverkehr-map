@@ -23,6 +23,7 @@ export interface SearchItem {
   kind: "stop" | "place" | "address" | "pin" | "action" | "saved" | "route" | "city";
   run(): void;
   stay?: boolean;
+  idle?: boolean; // a row that only informs ("searching...", "nothing found"): Enter does not pick it
 }
 
 export interface StopSearchOptions {
@@ -79,8 +80,14 @@ export function attachStopSearch(o: StopSearchOptions): StopSearch {
       active = (active + step + items.length) % items.length;
       render();
     } else if (e.key === "Enter" && !list.hidden) {
-      // The highlighted row; else the first stop found; else the place search, if offered.
-      const pick = items[active] ?? (localCount ? items[0] : items.find((i) => i.kind === "action"));
+      // The highlighted row; else the first stop found; else the first address or place found; else the
+      // place search, if offered (and not just running).
+      const pick =
+        items[active] ??
+        (localCount
+          ? items[0]
+          : (items.find((i) => i.kind === "address" || i.kind === "place") ??
+            items.find((i) => i.kind === "action" && !i.idle)));
       if (!pick) return;
       e.preventDefault(); // inside a form: pick the stop, do not send the form
       choose(pick);
@@ -141,11 +148,11 @@ export function attachStopSearch(o: StopSearchOptions): StopSearch {
         },
       ];
     }
-    if (places.state === "loading") return [{ label: t().placeSearching, kind: "action", stay: true, run: () => {} }];
+    if (places.state === "loading") return [{ label: t().placeSearching, kind: "action", stay: true, idle: true, run: () => {} }];
     if (places.state === "failed") {
       return [{ label: t().placeFailed, kind: "action", stay: true, run: () => void searchPlaces(text) }];
     }
-    if (!places.state.length) return [{ label: t().placeNone, kind: "action", stay: true, run: () => {} }];
+    if (!places.state.length) return [{ label: t().placeNone, kind: "action", stay: true, idle: true, run: () => {} }];
     return places.state.map((spot) => ({
       label: spot.name,
       sub: spot.what === "address" ? t().kindAddress : t().kindPlace,

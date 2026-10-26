@@ -124,7 +124,10 @@ if (map) {
     closeViews();
     closePanel();
   });
-  const first = initialView(parseViewHash(location.hash));
+  const linked = parseViewHash(location.hash);
+  // A link that cannot be read (cut off, or a date that does not exist): the empty map, and said so.
+  if (!linked && location.hash.length > 1) toast(t().linkBroken);
+  const first = initialView(linked);
   if (first) run(first);
 }
 
