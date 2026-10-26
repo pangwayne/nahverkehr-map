@@ -318,12 +318,12 @@ html[lang="en"] .flag-en {
     flex-basis: 280px;
   }
 
-  .near-text {
+  /* "Route" keeps its word (the main task should not hide behind an icon); "Mein Standort" goes icon-only. */
+  #near-me .near-text {
     display: none;
   }
 
-  #near-me,
-  #route-btn {
+  #near-me {
     width: 40px;
     padding: 0;
     justify-content: center;
@@ -377,9 +377,26 @@ html[lang="en"] .flag-en {
   }
 }
 
-/* The narrowest phones (320 px): the language switch shows just its code. */
+/* The narrowest phones (320 px): the language switch shows just its code, the route button just its icon. */
 @media (max-width: 400px) {
   .lang-toggle .lang-flag {
+    display: none;
+  }
+
+  #route-btn .near-text {
+    display: none;
+  }
+
+  #route-btn {
+    width: 40px;
+    padding: 0;
+    justify-content: center;
+  }
+}
+
+/* Phones with the panel open: the status line repeats the panel's title, so it gives its room to the map. */
+@media (max-width: 640px) {
+  body.panel-open #status {
     display: none;
   }
 }
@@ -429,6 +446,41 @@ html[lang="en"] .flag-en {
 @media (max-width: 699px) {
   #board:has(.route-results) {
     max-height: 70%;
+  }
+
+  /* "Liste größer": most of the screen, the map still peeking out above. */
+  #board.tall {
+    max-height: 88%;
+  }
+}
+
+/* The grow button only exists on phones; the card on wide screens has room. */
+#board-grow {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-left: auto;
+  border: 0;
+  border-radius: 10px;
+  background: var(--hover);
+  color: inherit;
+  cursor: pointer;
+}
+
+#board-grow svg {
+  transition: transform 0.2s;
+}
+
+#board.tall #board-grow svg {
+  transform: rotate(180deg);
+}
+
+@media (min-width: 700px) {
+  #board-grow {
+    display: none;
   }
 }
 
@@ -679,7 +731,9 @@ html[lang="en"] .flag-en {
   line-height: 1.35;
 }
 
+/* At least 32 px tall, so a thumb hits it without catching the line above (WCAG 2.5.8 asks for 24). */
 .link-button {
+  min-height: 32px;
   border: none;
   background: none;
   padding: 4px 0;
@@ -757,6 +811,18 @@ html[lang="en"] .flag-en {
 
 .trip-stop .time {
   font-variant-numeric: tabular-nums;
+}
+
+/* A moved time: the planned one struck through above the expected one. */
+.trip-stop .time .route-clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.15;
+}
+
+.trip-stop .time b {
+  font-weight: inherit;
 }
 
 /* A button that looks like text: opens the stop's departure board. */
@@ -897,6 +963,18 @@ html[lang="en"] .flag-en {
   color: inherit;
 }
 
+/* Phones: one line that scrolls sideways instead of two, so the map keeps the room. Still always visible. */
+@media (max-width: 640px) {
+  .site-footer {
+    overflow-x: auto;
+    white-space: nowrap;
+    font-size: 11px;
+    line-height: 26px;
+    padding: 0 12px;
+    scrollbar-width: none;
+  }
+}
+
 .site-footer a:hover {
   color: var(--mint);
 }
@@ -950,6 +1028,11 @@ html[lang="en"] .flag-en {
 
 .board-route-btn:hover {
   background: var(--hover);
+}
+
+.board-route-btn[aria-pressed="true"] {
+  background: var(--hover);
+  border-style: dashed;
 }
 
 /* Route panel: From / To with the stop search, when, and the search button. */
@@ -1420,3 +1503,399 @@ html[lang="en"] .flag-en {
   opacity: 0.5;
 }
 
+
+/* Board rows: the clock time (planned struck through when it moved) and the live state under the countdown. */
+.when-line {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.when-line .route-clock s {
+  font-size: 11px;
+}
+
+.when-line .route-clock b {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.row.cancelled .when-line .route-clock {
+  text-decoration: line-through;
+}
+
+.platform-change {
+  color: var(--late);
+  font-weight: 700;
+}
+
+.row-notice {
+  color: var(--late);
+  font-weight: 600;
+}
+
+/* The line filter above a board: the line badges as toggles in one row that scrolls sideways (a main
+   station has 30 lines). With some picked, the others fade. */
+.line-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 6px;
+  padding: 2px 0 6px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.line-filter > * {
+  flex: none;
+}
+
+.line-chip {
+  min-width: 40px;
+  height: 30px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.line-chip[aria-pressed="true"] {
+  border-color: var(--ink);
+}
+
+.line-filter.active .line-chip[aria-pressed="false"] {
+  opacity: 0.4;
+}
+
+.board-horizon {
+  margin: 8px 0 0;
+}
+
+/* Service notices: a header that opens to the full text. */
+.notices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+
+.notice {
+  padding: 6px 10px;
+  border-left: 4px solid var(--ink-soft);
+  border-radius: 6px;
+  background: var(--hover);
+  font-size: 13px;
+}
+
+.notice.warning {
+  border-left-color: var(--late);
+}
+
+.notice.severe {
+  border-left-color: var(--verylate);
+}
+
+.notice summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.notice.bare summary {
+  list-style: none;
+  cursor: default;
+}
+
+.notice p {
+  margin: 6px 0 2px;
+  white-space: pre-line;
+}
+
+.notice a {
+  color: var(--accent);
+}
+
+.notice-more {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+/* "Link kopiert" and the like, briefly at the bottom of the screen. */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 48px;
+  z-index: 20;
+  max-width: min(90vw, 420px);
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: var(--head-bg);
+  color: var(--head-ink);
+  font-size: 14px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 8px);
+  transition:
+    opacity 0.2s,
+    transform 0.2s;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* Search lists: a name, and under it what it is (address, saved route, ...). */
+.search-result {
+  display: flex;
+  flex-direction: column;
+}
+
+.search-sub {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.search-result.kind-action .search-label {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.stop-list .search-result {
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.stop-list .search-result:hover,
+.stop-list .search-result.active {
+  background: var(--hover);
+}
+
+/* A place picked from the search or held down on the map. */
+.place-pin {
+  width: 18px;
+  height: 18px;
+  border-radius: 50% 50% 50% 0;
+  background: var(--verylate);
+  border: 3px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  transform: rotate(-45deg);
+}
+
+.near-stops,
+.saved-routes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.near-stop,
+.saved-route {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: calc(100% + 16px);
+  min-height: 44px;
+  margin: 0 -8px;
+  padding: 8px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.near-stop:hover,
+.saved-route:hover {
+  background: var(--hover);
+}
+
+.near-stop small {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+/* Travel settings under "Optionen". */
+.route-prefs {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0 12px;
+}
+
+.route-prefs summary {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.route-prefs-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 0 12px;
+}
+
+.route-prefs-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.route-prefs-modes legend {
+  margin: 0 0 4px;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.pref-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.pref-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.pref-select {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.pref-select select {
+  font-weight: 400;
+}
+
+.route-prefs-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+/* Connections: the list's own sub-headings, and ones that have already left. */
+.route-subheading {
+  margin: 10px 0 2px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+}
+
+.route-options.past .route-option {
+  opacity: 0.6;
+}
+
+.route-options.pinned .route-option {
+  background: var(--hover);
+}
+
+/* A ride in the chain: vehicle icon, then the line badge. */
+.route-ride {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.mode-icon {
+  display: inline-flex;
+  color: var(--ink-soft);
+}
+
+/* Walks in a connection's details: the walk, the change it makes, the directions. */
+.journey-leg.walk {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.walk-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.walk-change,
+.journey-leg.change {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.journey-leg.change {
+  margin: 4px 0 4px 52px;
+}
+
+.walk-change.tight,
+.journey-leg.change.tight {
+  color: var(--late);
+}
+
+.walk-change.missed,
+.journey-leg.change.missed {
+  color: var(--verylate);
+}
+
+.walk-steps summary {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.walk-steps ol {
+  margin: 2px 0 4px;
+  padding-left: 20px;
+  color: var(--ink);
+}
+
+.walk-steps li.stairs,
+.walk-steps li.elevator {
+  font-weight: 700;
+}
+
+.route-changes {
+  margin: 0 0 8px;
+}
+
+/* Several small actions in a footer (refresh, share, save, whole route). */
+.foot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 14px;
+}
+
+.route-detail-foot {
+  flex-wrap: wrap;
+}

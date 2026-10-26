@@ -96,6 +96,24 @@
         abgelegt; die App löscht diese alte Kopie beim nächsten Aufruf.
       </p>
       <p>
+        Wenn Sie eine Haltestelle oder Route <strong>merken</strong> („Merken“) oder die <strong>Optionen</strong>
+        der Routensuche ändern, speichert Ihr Browser das im lokalen Speicher (Einträge <code>saved</code>: die
+        gemerkten Haltestellen und Routen mit ihren Namen und, bei Adressen und Orten, ihren Koordinaten;
+        <code>prefs</code>: die Optionen). „Mein Standort“ wird dabei nie als Position gespeichert: Eine gemerkte
+        Route ab „Mein Standort“ fragt ihn erneut ab. Beide Einträge bleiben auf Ihrem Gerät und werden weder an
+        mich noch an andere übertragen. Sie können die gemerkten Einträge im Suchfeld löschen („Gemerkte
+        Haltestellen und Routen löschen“) oder beide Einträge in Ihren Browsereinstellungen. Sie sind für die von
+        Ihnen gewählte Funktion unbedingt erforderlich (§ 25 Abs. 2 Nr. 2 TDDDG).
+      </p>
+      <p>
+        Damit die Zurück-Taste des Browsers und das Neuladen funktionieren, schreibt die App das Geöffnete (eine
+        Haltestelle, eine Fahrt, einen Ort oder eine Routensuche mit Start, Ziel, Zeit und Optionen) in die
+        Adresse der Seite, hinter das „#“, und in den Verlauf dieses Tabs. Den Teil hinter „#“ senden Browser nicht
+        an den Server, er erreicht mich also nicht. Er bleibt wie jede besuchte Seite in Ihrem Browserverlauf, bis
+        Sie ihn dort löschen. „Mein Standort“ wird nie in die Adresse geschrieben. Wenn Sie einen Link teilen
+        („Teilen“), kann ihn lesen, wer den Link bekommt.
+      </p>
+      <p>
         Die Schrift der App wird von dieser Seite selbst geladen, nicht von einem fremden Schriftdienst.
       </p>
 
@@ -177,11 +195,24 @@
         geladen, wie beim Antippen auf der Karte (Abschnitt 2). Das gilt auch für die Felder „Von“ und „Nach“ der
         Routensuche.
       </p>
+      <p id="places">
+        <strong>Adress- und Ortssuche:</strong> Nur wenn Sie in der Suchliste die Zeile „Adresse oder Ort suchen“
+        wählen (oder Enter drücken, wenn keine Haltestelle gefunden wurde), wird der eingetippte Text an meinen
+        Server gesendet, der bei Transitous nach passenden Adressen und Orten in Bonn, Köln, Düsseldorf und
+        Umgebung fragt. Damit dieselbe Frage nicht zweimal gestellt wird, hält mein Server die Antwort bis zu einem
+        Tag bereit, ohne Angaben darüber, wer gefragt hat; wie jede Anfrage gehört die Suche zu den technischen
+        Daten und Fehlerprotokollen bei Cloudflare (Abschnitt 2). Während Sie tippen, wird nichts gesendet. Ein auf
+        der Karte gedrückt gehaltener Punkt wird nicht nachgeschlagen: Er ist nur ein Punkt.
+      </p>
       <p>
         <strong>Routensuche:</strong> Wenn Sie auf „Verbindungen suchen“ tippen, sendet die App den gewählten Start und das
-        Ziel (Haltestellen oder Ihre Position bei Mein Standort, Abschnitt 5), Datum und Uhrzeit sowie, ob Sie dann abfahren oder ankommen möchten, an meinen Server, der
-        bei Transitous nach Verbindungen fragt. „Früher“, „Später“ und „Aktualisieren“ senden dieselbe Suche erneut.
-        Während Sie das Formular ausfüllen, wird nichts gesendet. Ich speichere Ihre Suchen nicht, und die App führt
+        Ziel (Haltestellen; bei einer Adresse, einem Ort oder einem Punkt auf der Karte dessen Koordinaten; Ihre
+        Position bei Mein Standort, Abschnitt 5), Datum und Uhrzeit, ob Sie dann abfahren oder ankommen möchten,
+        sowie die geänderten Optionen (zum Beispiel „keine Busse“ oder „höchstens 10 Minuten Fußweg“) an meinen
+        Server, der bei Transitous nach Verbindungen fragt. „Früher“, „Später“, „Aktualisieren“ und „Andere
+        Verbindungen ab jetzt“ senden dieselbe Suche erneut. Solange die Details einer Verbindung offen sind, lädt
+        die App einmal pro Minute die aktuellen Zeiten ihrer Fahrten, so wie die Fahrtkarte (eine Anfrage pro
+        Fahrt, nur die Fahrt). Während Sie das Formular ausfüllen, wird nichts gesendet. Ich speichere Ihre Suchen nicht, und die App führt
         keinen Suchverlauf; die Antwort wird nur in der geöffneten Seite angezeigt. Wie jede Anfrage gehört die Suche
         zu den technischen Daten und Fehlerprotokollen bei Cloudflare (Abschnitt 2). Damit mehrere Personen, die im
         selben Moment dasselbe fragen, nur eine Anfrage bei Transitous auslösen, hält mein Server die Antwort bis zu

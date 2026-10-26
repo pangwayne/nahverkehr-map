@@ -4,12 +4,26 @@
 
 import type { FeatureCollection, Point } from "geojson";
 import type * as maplibregl from "maplibre-gl";
+import { collectNotices } from "./alerts";
 import { fetchTrip, isStale } from "./api";
 import type { StopRef } from "./board";
-import { badgeTextColor, delayLevel, formatClock, formatCountdown, formatDelay, platformLabel } from "./departures";
+import { badgeTextColor, delayLevel, formatCountdown, formatDelay, platformLabel, plannedPlatform } from "./departures";
 import type { LonLat } from "./geo";
 import { fitPoints } from "./mapfit";
-import { type PanelUser, ageLine, el, focusKey, openPanel, ownsPanel, renderPanel } from "./panel";
+import { goBack, linkTo, previousView, pushView } from "./nav";
+import {
+  type PanelUser,
+  ageLine,
+  button,
+  clock,
+  el,
+  focusKey,
+  noticeList,
+  openPanel,
+  ownsPanel,
+  renderPanel,
+  shareLink,
+} from "./panel";
 import { t, onLangChange } from "./i18n";
 import { shortName } from "./names";
 import { ageText, resetStatus, setStatus } from "./status";
@@ -23,6 +37,7 @@ const FETCH_TIMEOUT_MS = 15_000;
 const STALE_AFTER_S = 120;
 const UNAVAILABLE_AFTER_S = 180; // older than this, the vehicle dot is hidden (never show old data as live)
 const FOCUS_MAX_ZOOM = 16;
+const MAX_NOTICES = 3;
 
 const VEHICLE_SOURCE = "trip-vehicle";
 const VEHICLE_LAYER = "vehicle-dot";
@@ -40,11 +55,11 @@ export interface TripRef {
   line: string;
   color: string;
   focus: LonLat | null;
-  back?: { label: () => string; run: () => void }; // opened from somewhere else (a route's details): the way back
 }
 
 export interface TripCard {
-  showTrip(ref: TripRef): void;
+  // `push`: a new browser history entry (not when Back / Forward / a link brings the card back).
+  showTrip(ref: TripRef, push?: boolean): void;
 }
 
 // `onStopTap`: a stop dot on the shown route was tapped (opens that stop's departure board).
@@ -190,11 +205,17 @@ export function startTripCard(map: maplibregl.Map, onStopTap: (stop: StopRef) =>
       el("span", "", route ? shortName(route.headsign) : "…"),
     ];
     const parts: HTMLElement[] = [];
-    if (tapped.back) {
-      const back = tapped.back;
-      const btn = focusKey(el("button", "link-button route-back", `← ${back.label()}`), "back");
-      (btn as HTMLButtonElement).type = "button";
-      btn.addEventListener("click", () => back.run());
+    // Opened from a board or a connection in this tab: a way back to it (the same as the browser's Back).
+    const previous = previousView();
+    const backLabel =
+      previous?.kind === "stop" || previous?.kind === "near"
+        ? t().backToDepartures
+        : previous?.kind === "journey"
+          ? t().routeBackToJourney
+          : null;
+    if (backLabel) {
+      const btn = button("link-button route-back", `← ${backLabel}`, "back");
+      btn.addEventListener("click", goBack);
       parts.push(btn);
     }
 
@@ -220,6 +241,9 @@ export function startTripCard(map: maplibregl.Map, onStopTap: (stop: StopRef) =>
     }
 
     if (error && age > STALE_AFTER_S) parts.push(el("p", "board-note board-error", t().tripUnavailable));
+
+    const notices = noticeList(collectNotices([route.alerts], now), MAX_NOTICES);
+    if (notices) parts.push(notices);
 
     // Passed stops are folded away (all but the last one), so the summary stays at the top. Before the
     // start, all earlier stops go: they are cancelled (the trip starts further along its line).
@@ -255,17 +279,26 @@ export function startTripCard(map: maplibregl.Map, onStopTap: (stop: StopRef) =>
       const old = age > STALE_AFTER_S;
       foot.append(ageLine(ageText(age, old, error !== null), old || error !== null));
     }
+    const actions = el("span", "foot-actions");
+    const share = button("link-button", t().share, "share");
+    const ref = tapped;
+    const shareTitle = `${route.line} → ${shortName(route.headsign)}`;
+    share.addEventListener("click", () =>
+      void shareLink(linkTo({ kind: "trip", tripId: ref.tripId, line: ref.line, color: ref.color }), shareTitle),
+    );
     const zoomBtn = focusKey(el("button", "link-button", t().wholeRoute), "whole-route");
     const shownRoute = route;
     zoomBtn.addEventListener("click", () => fitRoute(map, shownRoute));
-    foot.append(zoomBtn);
+    actions.append(share, zoomBtn);
+    foot.append(actions);
     parts.push(foot);
 
     renderPanel(user, title, parts);
   }
 
   return {
-    showTrip(ref: TripRef): void {
+    showTrip(ref: TripRef, push = true): void {
+      if (push) pushView({ kind: "trip", tripId: ref.tripId, line: ref.line, color: ref.color });
       open(ref);
     },
   };
@@ -306,7 +339,7 @@ function nextText(route: TripRoute, p: TripProgress, now: number): string {
     return last ? t().tripEndedAt(shortName(last.name)) : t().tripEnded;
   }
   const s = route.stops[p.next]!;
-  const label = platformLabel(s.stopId, route.mode);
+  const label = platformLabel(s.stopId, route.mode, s);
   const platform = label ? ` (${label})` : "";
   const name = shortName(s.name);
   if (p.state === "before") return t().startsAt(`${name}${platform}`, formatCountdown(leaveMs(s)!, now));
@@ -326,16 +359,24 @@ function renderStop(
   const classes = ["trip-stop", passed ? "passed" : "", i === p.next ? "next" : "", s.cancelled ? "cancelled" : ""];
   const li = el("li", classes.filter(Boolean).join(" "));
 
-  // The time that matters for a passenger: departure, or arrival at the last stop.
+  // The time that matters for a passenger: departure, or arrival at the last stop. With live data, the planned
+  // time is struck through in front when it moved.
   const leave = leaveMs(s);
   const sched = s.schedDepMs ?? s.schedArrMs;
-  li.append(el("span", "time", leave === null ? "" : formatClock(leave)));
+  const time = el("span", "time");
+  if (leave !== null) time.append(clock(leave, route.realTime && !s.cancelled && sched !== null ? sched : leave));
+  li.append(time);
   li.append(el("span", "stop-dot")); // on the timeline: grey when passed, ringed for the next stop
 
   const name = focusKey(el("button", "name", shortName(s.name)), `stop-${i}`);
   (name as HTMLButtonElement).type = "button";
-  const platform = platformLabel(s.stopId, route.mode);
-  if (platform) name.append(el("small", "", ` ${platform}`));
+  const platform = platformLabel(s.stopId, route.mode, s);
+  const planned = plannedPlatform(s.stopId, route.mode, s);
+  if (platform) {
+    name.append(
+      el("small", planned ? "platform-change" : "", ` ${planned ? t().platformChanged(platform, planned) : platform}`),
+    );
+  }
   name.addEventListener("click", () => onStopTap({ stopId: s.stopId, name: s.name, lon: s.lon, lat: s.lat }));
   li.append(name);
 

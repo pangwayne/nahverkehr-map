@@ -192,18 +192,22 @@ function variants(typed: string): string[] {
 
 // What a station can be found by: its name, with the plate ("K Neumarkt") and with the town spelled
 // out ("Düsseldorf Wehrhahn" for "D-Wehrhahn S"). Worked out once per station, not on every key press.
-const searchIndex = new WeakMap<Station, { text: string; words: string[] }>();
+const searchIndex = new WeakMap<Station, { text: string; words: string[]; compact: string }>();
 
-function searchable(station: Station): { text: string; words: string[] } {
+function searchable(station: Station): { text: string; words: string[]; compact: string } {
   let entry = searchIndex.get(station);
   if (!entry) {
     const forms = new Set([station.name, plateName(station.name), townName(station.name)]);
     const text = [...forms].map(searchText).join(" ");
-    entry = { text, words: words(text) };
+    entry = { text, words: words(text), compact: words(searchText(station.name)).join("") };
     searchIndex.set(station, entry);
   }
   return entry;
 }
+
+// Typed words that belong together count extra when the name has them as one word: "beethoven haus" is the
+// stop "Beethovenhaus", not "Deichhaus Beethovenstr." (which merely contains both).
+const JOINED_MIN = 6;
 
 // Stations whose name contains every typed word, best first: a whole name word beats a name word
 // starting with the typed word, which beats one containing it; then shorter names. The town counts like any other word,
@@ -227,7 +231,11 @@ export function searchStations(stations: Station[], query: string, limit: number
       if (!atStart) rank += i === 0 ? 2 : 1;
       else if (!forms.some((f) => nameWords.includes(f))) rank += 0.5; // "k" is the whole plate in K-Neumarkt, only the start of Kuhweg
     }
-    if (ok) hits.push({ station, rank });
+    if (!ok) continue;
+    const { compact } = searchable(station);
+    const pairs = typed.slice(1).map((w, i) => typed[i]! + w);
+    if (pairs.some((p) => p.length >= JOINED_MIN && compact.includes(p))) rank -= 1;
+    hits.push({ station, rank });
   }
   return hits
     .sort((a, b) => a.rank - b.rank || a.station.name.length - b.station.name.length || a.station.name.localeCompare(b.station.name))

@@ -1,20 +1,37 @@
 // A stop search field with a drop-down list (ARIA combobox): type part of a name, pick a stop with a tap or
 // with the arrow keys and Enter. Used by the header search and by the route panel's From and To fields.
-// It searches the stop list the board has already loaded, so typing sends nothing anywhere.
+// Stops are searched in the stop list the board has already loaded, so typing sends nothing anywhere.
+// Addresses and places (where the field takes them) are a separate, explicit step: the last row of the list
+// ("Adresse oder Ort suchen") sends the typed text to the place search, and only when chosen.
 
+import { fetchGeocode } from "./api";
 import type { Board } from "./board";
-import { t, onLangChange } from "./i18n";
+import { getLang, t, onLangChange } from "./i18n";
 import { shortName } from "./names";
 import { el } from "./panel";
+import { type Spot, matchesToSpots } from "./places";
 import { type Station, searchStations } from "./stops";
 
 const MAX_RESULTS = 8;
+const PLACE_MIN_CHARS = 3;
+const PLACE_TIMEOUT_MS = 10_000;
+
+// One row of the list. `run` is what choosing it does; `stay`: the list stays open (a search starts).
+export interface SearchItem {
+  label: string;
+  sub?: string;
+  kind: "stop" | "place" | "address" | "pin" | "action" | "saved" | "route" | "city";
+  run(): void;
+  stay?: boolean;
+}
 
 export interface StopSearchOptions {
   input: HTMLInputElement;
   list: HTMLUListElement; // needs an id (aria-controls, option ids)
   board: Board;
   onPick(station: Station): void;
+  onPickSpot?(spot: Spot): void; // set: the list offers the place search (addresses, landmarks)
+  emptyItems?(): SearchItem[]; // what the list offers while the field is empty (saved stops, cities)
   onType?(): void; // the text changed by typing, so an earlier pick no longer matches it
   openOnFocus?(): boolean; // false: focusing the field does not open the list (it already holds a pick)
   clearOnEscape: boolean; // Escape with the list open also empties the field
@@ -24,10 +41,17 @@ export interface StopSearch {
   close(): void;
 }
 
+// Place answers already fetched in this tab, by language and text (the same text twice asks once).
+const placeCache = new Map<string, Spot[]>();
+
 export function attachStopSearch(o: StopSearchOptions): StopSearch {
   const { input, list, board } = o;
-  let results: Station[] = [];
-  let active = -1; // the highlighted result (arrow keys), -1 for none
+  let items: SearchItem[] = [];
+  let active = -1; // the highlighted row (arrow keys), -1 for none
+  let localCount = 0; // how many of the rows are stops found locally (Enter picks the first)
+  // The place search for the current text: its answer, or that it is on its way / failed.
+  let places: { text: string; state: "loading" | "failed" | Spot[] } | null = null;
+  let placeSeq = 0;
 
   input.setAttribute("role", "combobox");
   input.setAttribute("aria-autocomplete", "list");
@@ -49,13 +73,14 @@ export function attachStopSearch(o: StopSearchOptions): StopSearch {
   });
   input.addEventListener("keydown", (e) => {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      if (!results.length) return;
+      if (!items.length) return;
       e.preventDefault();
       const step = e.key === "ArrowDown" ? 1 : -1;
-      active = (active + step + results.length) % results.length;
+      active = (active + step + items.length) % items.length;
       render();
     } else if (e.key === "Enter" && !list.hidden) {
-      const pick = results[active] ?? results[0];
+      // The highlighted row; else the first stop found; else the place search, if offered.
+      const pick = items[active] ?? (localCount ? items[0] : items.find((i) => i.kind === "action"));
       if (!pick) return;
       e.preventDefault(); // inside a form: pick the stop, do not send the form
       choose(pick);
@@ -68,9 +93,7 @@ export function attachStopSearch(o: StopSearchOptions): StopSearch {
   // Tapping a result: mousedown comes before the input's blur.
   list.addEventListener("mousedown", (e) => e.preventDefault());
   onLangChange(() => {
-    if (list.hidden) return;
-    if (board.stations().length) render();
-    else void update(); // the "loading" note, in the new language
+    if (!list.hidden) void update();
   });
   // Still waiting for the stop list: "loading" turns into "couldn't load", then into results.
   board.onStationsChange(() => {
@@ -80,30 +103,96 @@ export function attachStopSearch(o: StopSearchOptions): StopSearch {
   async function update(): Promise<void> {
     const query = input.value;
     if (!query.trim()) {
-      close();
+      const extra = o.emptyItems?.() ?? [];
+      places = null;
+      if (!extra.length) {
+        close();
+        return;
+      }
+      items = extra;
+      localCount = 0;
+      active = -1;
+      render();
       return;
     }
+    if (places && places.text !== query.trim()) places = null; // the text changed: that answer is for other text
     if (!board.stations().length) {
       showNote(board.stationsFailed() ? t().stopsFailed : t().searchLoading);
       return; // onStationsChange runs this again
     }
-    results = searchStations(board.stations(), query, MAX_RESULTS);
+    const found = searchStations(board.stations(), query, MAX_RESULTS);
+    items = found.map((s) => ({ label: shortName(s.name), kind: "stop" as const, run: () => o.onPick(s) }));
+    localCount = items.length;
+    if (o.onPickSpot && query.trim().length >= PLACE_MIN_CHARS) items.push(...placeItems(query.trim()));
     active = -1;
     render();
   }
 
+  // The place search rows: the button to start it, "searching...", its answer, or what went wrong.
+  function placeItems(text: string): SearchItem[] {
+    if (!places || places.text !== text) {
+      return [
+        {
+          label: t().placeSearch(text),
+          sub: t().placeSearchNote,
+          kind: "action",
+          stay: true,
+          run: () => void searchPlaces(text),
+        },
+      ];
+    }
+    if (places.state === "loading") return [{ label: t().placeSearching, kind: "action", stay: true, run: () => {} }];
+    if (places.state === "failed") {
+      return [{ label: t().placeFailed, kind: "action", stay: true, run: () => void searchPlaces(text) }];
+    }
+    if (!places.state.length) return [{ label: t().placeNone, kind: "action", stay: true, run: () => {} }];
+    return places.state.map((spot) => ({
+      label: spot.name,
+      sub: spot.what === "address" ? t().kindAddress : t().kindPlace,
+      kind: spot.what,
+      run: () => o.onPickSpot!(spot),
+    }));
+  }
+
+  async function searchPlaces(text: string): Promise<void> {
+    const lang = getLang();
+    const key = `${lang}|${text.toLowerCase()}`;
+    const mine = ++placeSeq;
+    const cached = placeCache.get(key);
+    if (cached) {
+      places = { text, state: cached };
+      void update();
+      return;
+    }
+    places = { text, state: "loading" };
+    void update();
+    try {
+      const res = await fetchGeocode(text, lang, AbortSignal.timeout(PLACE_TIMEOUT_MS));
+      const spots = matchesToSpots(res.data);
+      placeCache.set(key, spots);
+      if (mine !== placeSeq) return; // a newer search is on its way
+      places = { text, state: spots };
+    } catch {
+      if (mine !== placeSeq) return;
+      places = { text, state: "failed" };
+    }
+    if (document.activeElement === input && input.value.trim() === text) void update();
+  }
+
   function render(): void {
-    if (!results.length) {
+    if (!items.length) {
       showNote(t().searchNone);
       return;
     }
     list.replaceChildren(
-      ...results.map((s, i) => {
-        const li = el("li", i === active ? "search-result active" : "search-result", shortName(s.name));
+      ...items.map((item, i) => {
+        const li = el("li", `search-result kind-${item.kind}${i === active ? " active" : ""}`);
+        li.append(el("span", "search-label", item.label));
+        if (item.sub) li.append(el("small", "search-sub", item.sub));
         li.id = `${list.id}-${i}`;
         li.setAttribute("role", "option");
         li.setAttribute("aria-selected", String(i === active));
-        li.addEventListener("click", () => choose(s));
+        li.addEventListener("click", () => choose(item));
         return li;
       }),
     );
@@ -113,14 +202,19 @@ export function attachStopSearch(o: StopSearchOptions): StopSearch {
   }
 
   function showNote(text: string): void {
-    results = [];
+    items = [];
+    localCount = 0;
     list.replaceChildren(el("li", "search-note", text));
     open();
   }
 
-  function choose(station: Station): void {
+  function choose(item: SearchItem): void {
+    if (item.stay) {
+      item.run();
+      return;
+    }
     close();
-    o.onPick(station);
+    item.run();
   }
 
   function open(): void {
@@ -130,8 +224,9 @@ export function attachStopSearch(o: StopSearchOptions): StopSearch {
 
   function close(): void {
     list.hidden = true;
-    results = [];
+    items = [];
     active = -1;
+    localCount = 0;
     input.setAttribute("aria-expanded", "false");
     input.removeAttribute("aria-activedescendant");
   }

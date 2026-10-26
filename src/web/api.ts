@@ -6,6 +6,26 @@ export interface Place {
   lat: number;
   lon: number;
   track?: string;
+  scheduledTrack?: string;
+  alerts?: Alert[];
+}
+
+// A service notice from the live feed (works, diversions, lifts out of order). Plain text only.
+export interface Alert {
+  headerText: string;
+  descriptionText: string;
+  url?: string;
+  severityLevel?: "UNKNOWN_SEVERITY" | "INFO" | "WARNING" | "SEVERE" | (string & {});
+  communicationPeriod?: { start?: string; end?: string }[];
+}
+
+// One piece of a walk (detailed transfers): a turn, stairs, a lift, and how far.
+export interface Step {
+  relativeDirection: string; // "LEFT", "STAIRS", "ELEVATOR", ...
+  distance: number; // meters
+  streetName: string;
+  fromLevel?: number;
+  toLevel?: number;
 }
 
 export type Mode =
@@ -54,6 +74,7 @@ export interface StopTime {
 
 export interface StopTimesResponse {
   stopTimes: StopTime[];
+  nextPageCursor?: string; // "LATER|1792961640": the departures after these
 }
 
 // One stop of a trip (from /trip). The first stop has no arrival, the last one no departure.
@@ -79,6 +100,8 @@ export interface Leg {
   to: TripStopPlace;
   intermediateStops?: TripStopPlace[];
   legGeometry: { points: string; precision: number }; // precision 6 here, unlike map/trips (5)
+  alerts?: Alert[];
+  steps?: Step[]; // walks only
 }
 
 // /trip answers with a trip as an itinerary: usually one leg, several if the vehicle changes number.
@@ -142,8 +165,33 @@ export function fetchStops(signal?: AbortSignal): Promise<Fetched<StopPlace[]>> 
   return fetchJson<StopPlace[]>("/api/stops?area=rheinland-1", signal);
 }
 
-export function fetchDepartures(stopId: string, signal?: AbortSignal): Promise<Fetched<StopTimesResponse>> {
-  return fetchJson<StopTimesResponse>(`/api/departures?stopId=${encodeURIComponent(stopId)}`, signal);
+// `cursor`: a "later" page cursor from an earlier answer.
+export function fetchDepartures(
+  stopId: string,
+  signal?: AbortSignal,
+  cursor: string | null = null,
+): Promise<Fetched<StopTimesResponse>> {
+  const extra = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
+  return fetchJson<StopTimesResponse>(`/api/departures?stopId=${encodeURIComponent(stopId)}${extra}`, signal);
+}
+
+// An address or a place (landmark, shop, park) from the place search.
+export interface GeocodeMatch {
+  type: "ADDRESS" | "PLACE" | "STOP" | (string & {});
+  name: string;
+  id: string;
+  lat: number;
+  lon: number;
+  street?: string;
+  houseNumber?: string;
+  category?: string;
+  areas?: { name: string; adminLevel: number; default?: boolean }[];
+}
+
+// Sends what was typed to the Worker (and from there to Transitous); only on an explicit search.
+export function fetchGeocode(text: string, lang: string, signal?: AbortSignal): Promise<Fetched<GeocodeMatch[]>> {
+  const params = new URLSearchParams({ text, lang });
+  return fetchJson<GeocodeMatch[]>(`/api/geocode?${params.toString()}`, signal);
 }
 
 export function fetchTrip(tripId: string, signal?: AbortSignal): Promise<Fetched<Itinerary>> {
@@ -152,11 +200,12 @@ export function fetchTrip(tripId: string, signal?: AbortSignal): Promise<Fetched
 
 // What the route panel asks for; the Worker checks every field again (src/worker/transitous.ts).
 export interface PlanRequest {
-  from: string; // stop IDs, or one position for "My location" (positionPlace in plan.ts)
+  from: string; // stop IDs, or positions (positionPlace in plan.ts): My location, an address, a map point
   to: string;
   time: string; // "2026-10-24T17:00Z"
   arriveBy: boolean;
   cursor: string | null; // earlier / later page
+  prefs?: Record<string, string>; // travel settings as query fields (prefsQuery in prefs.ts); none: defaults
 }
 
 // A route search the Worker refused or could not answer. `status` is null when nothing came back at all.
@@ -172,6 +221,7 @@ export class PlanError extends Error {
 export async function fetchPlan(q: PlanRequest, signal?: AbortSignal): Promise<Fetched<PlanResponse>> {
   const params = new URLSearchParams({ from: q.from, to: q.to, time: q.time, arriveBy: q.arriveBy ? "1" : "0" });
   if (q.cursor) params.set("cursor", q.cursor);
+  for (const [name, value] of Object.entries(q.prefs ?? {})) params.set(name, value);
   let res: Response;
   try {
     res = await fetch(`/api/plan?${params.toString()}`, { signal });

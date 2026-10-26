@@ -1,7 +1,7 @@
 // Turns Transitous stoptimes into departure-board rows, plus the text shown for each row.
 // Pure functions only (no DOM, no fetch), so everything here is unit tested. Texts come from i18n.ts.
 
-import type { Mode, StopTime } from "./api";
+import type { Alert, Mode, StopTime } from "./api";
 import { t } from "./i18n";
 
 // Keep a departure on the board this long after it left (times have minute resolution).
@@ -19,6 +19,7 @@ export interface DepartureRow {
   lon: number;
   lat: number;
   platform: string | null; // e.g. "Gleis 2"; null where we do not know what the sign says
+  plannedPlatform: string | null; // set when the train leaves from another platform than planned
   depMs: number;
   schedMs: number;
   delaySec: number; // positive = late
@@ -26,6 +27,7 @@ export interface DepartureRow {
   cancelled: boolean;
   color: string | null; // "#rrggbb" or null
   textColor: string | null;
+  alerts: Alert[]; // notices the feed attached to this departure at this stop
 }
 
 const HEX_COLOR = /^[0-9a-fA-F]{6}$/;
@@ -49,18 +51,57 @@ export function tooEarly(delaySec: number, mode: Mode): boolean {
   return EARLY_CHECK_MODES.has(mode) && delaySec < -TOO_EARLY_SEC;
 }
 
-// German rail platform IDs end in ":7:<70 + platform>", e.g. "de:05314:66101:7:72" = Gleis 2.
-// Checked against DB's own platforms for ~160 trains at Bonn Hbf, Bad Godesberg and Köln Messe/Deutz
-// (Gleis 1-10). Transitous' `track` field is not the sign (it says 78 for Bonn Hbf Gleis 1).
-const RAIL_PLATFORM = /:7:(\d{2})$/;
+// Two shapes of rail platform IDs, one per transport association. Each rule only applies to its own shape.
+// VRS (Bonn, Köln): IDs end in ":7:<70 + platform>", e.g. "de:05314:66101:7:72" = Gleis 2. Checked against
+// DB's own platforms for ~160 trains at Bonn Hbf, Bad Godesberg and Köln Messe/Deutz (Gleis 1-10).
+// Transitous' `track` field is not the sign there (it says 78 for Bonn Hbf Gleis 1).
+const VRS_PLATFORM = /:7:(\d{2})$/;
+// VRR (Düsseldorf, Neuss, Wuppertal...): rail platforms sit in areas 90-99 and end in the platform number,
+// and there `track` is that same number: "de:05111:18235:90:4", track "4", described "Gleis 4+5" (Düsseldorf
+// Hbf, checked 2026-10-25 for Gleis 4-20 against the feed's own descriptions). Only when ID and track agree.
+const VRR_PLATFORM = /:9\d:(\d{1,2})$/;
+
+// The track fields of one stop time: `track` live, `scheduledTrack` planned (Transitous' names).
+export interface Tracks {
+  track?: string | null;
+  scheduledTrack?: string | null;
+}
+
+const PLATFORM_NUMBER = /^\d{1,2}$/;
 
 // What the platform sign says, where we know it: only trains. Bus and tram numbers in the data
 // do not match the signs (Rheinallee's bays C1-C3 come as 26-28), so they are left out.
-export function platformLabel(stopId: string | undefined | null, mode: Mode): string | null {
+// `tracks`: only used where they are the sign (VRR), to confirm the platform and follow a live change.
+export function platformLabel(stopId: string | undefined | null, mode: Mode, tracks: Tracks = {}): string | null {
+  const n = platformNumbers(stopId, mode, tracks)?.live ?? null;
+  return n === null ? null : `Gleis ${n}`;
+}
+
+// The planned platform when the train now leaves from another one ("Gleis 12" while `platformLabel` says
+// Gleis 11), else null. Only VRR: elsewhere the track fields are not the sign.
+export function plannedPlatform(stopId: string | undefined | null, mode: Mode, tracks: Tracks = {}): string | null {
+  const n = platformNumbers(stopId, mode, tracks);
+  return n && n.planned !== n.live ? `Gleis ${n.planned}` : null;
+}
+
+function platformNumbers(
+  stopId: string | undefined | null,
+  mode: Mode,
+  { track, scheduledTrack }: Tracks,
+): { live: number; planned: number } | null {
   if (!stopId || !RAIL_MODES.has(mode)) return null;
-  const m = RAIL_PLATFORM.exec(stopId);
-  const n = m ? Number(m[1]) - 70 : 0;
-  return n >= 1 ? `Gleis ${n}` : null;
+  const vrs = VRS_PLATFORM.exec(stopId);
+  if (vrs) {
+    const n = Number(vrs[1]) - 70;
+    return n >= 1 ? { live: n, planned: n } : null;
+  }
+  const vrr = VRR_PLATFORM.exec(stopId);
+  // The ID must agree with one of the track fields, else this is some other numbering.
+  if (!vrr || (track !== vrr[1] && scheduledTrack !== vrr[1])) return null;
+  const num = (t: string | null | undefined) => (t && PLATFORM_NUMBER.test(t) ? Number(t) : Number(vrr[1]));
+  const live = num(track);
+  const planned = num(scheduledTrack);
+  return live >= 1 && live <= 30 && planned >= 1 && planned <= 30 ? { live, planned } : null;
 }
 
 // "RB26", not "RB26 (25445)": the number in brackets is the train number, which riders do not need.
@@ -100,7 +141,8 @@ export function toRows(stopTimes: StopTime[]): DepartureRow[] {
       stopName: p.name,
       lon: p.lon,
       lat: p.lat,
-      platform: platformLabel(p.stopId, st.mode),
+      platform: platformLabel(p.stopId, st.mode, p),
+      plannedPlatform: plannedPlatform(p.stopId, st.mode, p),
       depMs,
       schedMs,
       delaySec: (depMs - schedMs) / 1000,
@@ -108,6 +150,7 @@ export function toRows(stopTimes: StopTime[]): DepartureRow[] {
       cancelled: st.cancelled || st.tripCancelled || p.cancelled === true,
       color: hexOrNull(st.routeColor),
       textColor: hexOrNull(st.routeTextColor),
+      alerts: p.alerts ?? [],
     });
   }
   return rows.sort((a, b) => a.depMs - b.depMs);

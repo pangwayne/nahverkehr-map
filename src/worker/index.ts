@@ -9,12 +9,16 @@ import {
   USER_AGENT,
   bucketStart,
   buildDeparturesUrl,
+  buildGeocodeUrl,
   buildPlanUrl,
   buildStopsUrl,
   buildTripUrl,
+  isValidDeparturesCursor,
   isValidStopId,
   isValidTripId,
+  parseGeocodeQuery,
   parsePlanQuery,
+  prefsParams,
 } from "./transitous";
 
 // If Transitous fails, serve the last good copy for up to this long (marked as stale).
@@ -32,6 +36,11 @@ const LIVE_BROWSER_MAX_AGE_S = 10;
 // only briefly: an old plan lists trains that have already left.
 const PLAN_FRESH_S = 60;
 const PLAN_STALE_LIMIT_S = 120;
+
+// Addresses and places hardly change: one shared answer per typed text for a day.
+const GEOCODE_FRESH_S = DAY_S;
+const GEOCODE_STALE_LIMIT_S = 7 * DAY_S;
+const GEOCODE_BROWSER_MAX_AGE_S = 3600;
 
 // A failed answer is remembered too, so repeated requests for it do not all reach Transitous:
 // an unknown stop or trip for a while, an outage only briefly (it may be over soon).
@@ -82,7 +91,7 @@ export default {
       );
     }
     const limiter = url.pathname === "/api/plan" ? env.PLAN_LIMIT : env.API_LIMIT;
-    return withSecurityHeaders(await api(url, upstreamAllowed(request, limiter), ctx));
+    return withSecurityHeaders(await api(url, upstreamAllowed(request, limiter), ctx, request.headers.get("If-None-Match")));
   },
 } satisfies ExportedHandler<Env>;
 
@@ -97,7 +106,13 @@ function upstreamAllowed(request: Request, limiter: RateLimit | undefined): () =
   };
 }
 
-async function api(url: URL, allowed: () => Promise<boolean>, ctx: ExecutionContext): Promise<Response> {
+// `ifNoneMatch`: the browser's If-None-Match header; the stop list answers 304 when it still has that copy.
+async function api(
+  url: URL,
+  allowed: () => Promise<boolean>,
+  ctx: ExecutionContext,
+  ifNoneMatch: string | null = null,
+): Promise<Response> {
   const base = `${url.origin}${url.pathname}`;
 
   if (url.pathname === "/api/health") {
@@ -105,6 +120,8 @@ async function api(url: URL, allowed: () => Promise<boolean>, ctx: ExecutionCont
   }
 
   if (url.pathname === "/api/stops") {
+    // The list is ~370 KB even compressed. A browser that still has today's copy is told so (304) instead of
+    // getting it again. Trimming the list here would cost more CPU time than the free plan allows.
     return cachedProxy(ctx, allowed, {
       upstreamUrl: buildStopsUrl(),
       bucketKey: `${base}?area=${AREA_VERSION}&fresh`,
@@ -113,6 +130,22 @@ async function api(url: URL, allowed: () => Promise<boolean>, ctx: ExecutionCont
       freshS: DAY_S,
       staleS: STOPS_STALE_LIMIT_S,
       browserMaxAgeS: STOPS_BROWSER_MAX_AGE_S,
+      ifNoneMatch,
+    });
+  }
+
+  if (url.pathname === "/api/geocode") {
+    const q = parseGeocodeQuery(url.searchParams);
+    if (!q) return Response.json({ error: "invalid search" }, { status: 400 });
+    const key = new URLSearchParams({ text: q.text, lang: q.lang });
+    return cachedProxy(ctx, allowed, {
+      upstreamUrl: buildGeocodeUrl(q),
+      bucketKey: `${base}?${key}&fresh`,
+      latestKey: `${base}?${key}&latest`,
+      failKey: `${base}?${key}&failed`,
+      freshS: GEOCODE_FRESH_S,
+      staleS: GEOCODE_STALE_LIMIT_S,
+      browserMaxAgeS: GEOCODE_BROWSER_MAX_AGE_S,
     });
   }
 
@@ -121,10 +154,14 @@ async function api(url: URL, allowed: () => Promise<boolean>, ctx: ExecutionCont
     if (!isValidStopId(stopId)) {
       return Response.json({ error: "invalid stopId" }, { status: 400 });
     }
+    const cursor = url.searchParams.get("cursor");
+    if (cursor !== null && !isValidDeparturesCursor(cursor, Date.now())) {
+      return Response.json({ error: "invalid cursor" }, { status: 400 });
+    }
     const start = bucketStart(Date.now(), DEPARTURES_BUCKET_MS);
-    const id = encodeURIComponent(stopId);
+    const id = encodeURIComponent(stopId) + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : "");
     return cachedProxy(ctx, allowed, {
-      upstreamUrl: buildDeparturesUrl(stopId),
+      upstreamUrl: buildDeparturesUrl(stopId, cursor),
       bucketKey: `${base}?stopId=${id}&bucket=${start}`,
       latestKey: `${base}?stopId=${id}&latest`,
       failKey: `${base}?stopId=${id}&failed`,
@@ -155,9 +192,11 @@ async function api(url: URL, allowed: () => Promise<boolean>, ctx: ExecutionCont
   if (url.pathname === "/api/plan") {
     const q = parsePlanQuery(url.searchParams, Date.now());
     if (!q) return Response.json({ error: "invalid route search" }, { status: 400 });
-    // Built from the checked fields only, so extra or reordered parameters share one cache entry.
+    // Built from the checked fields only, so extra or reordered parameters share one cache entry. Travel
+    // settings change the answer, so they are part of it (defaults are left out).
     const key = new URLSearchParams({ from: q.from, to: q.to, time: q.time, arriveBy: q.arriveBy ? "1" : "0" });
     if (q.cursor) key.set("cursor", q.cursor);
+    for (const [name, value] of Object.entries(prefsParams(q.prefs))) key.set(name, value);
     return cachedProxy(ctx, allowed, {
       upstreamUrl: buildPlanUrl(q),
       bucketKey: `${base}?${key}&fresh`,
@@ -199,6 +238,7 @@ interface ProxyOptions {
   freshS: number;
   staleS: number;
   browserMaxAgeS: number;
+  ifNoneMatch?: string | null; // set: answers carry an ETag, and a matching request gets 304
 }
 
 export type Failure = "notFound" | "outage";
@@ -216,7 +256,7 @@ async function cachedProxy(ctx: ExecutionContext, allowed: () => Promise<boolean
   const failKey = new Request(opts.failKey);
 
   const hit = await cache.match(bucketKey);
-  if (hit) return forClient(hit, "HIT", opts.browserMaxAgeS);
+  if (hit) return forClient(hit, "HIT", opts.browserMaxAgeS, opts.ifNoneMatch);
 
   // Failed a moment ago: answer the same way without asking Transitous again.
   const failed = await cache.match(failKey);
@@ -254,7 +294,7 @@ async function cachedProxy(ctx: ExecutionContext, allowed: () => Promise<boolean
 
     ctx.waitUntil(cache.put(bucketKey, stored(opts.freshS)));
     ctx.waitUntil(cache.put(latestKey, stored(opts.staleS)));
-    return forClient(stored(0), "MISS", opts.browserMaxAgeS);
+    return forClient(stored(0), "MISS", opts.browserMaxAgeS, opts.ifNoneMatch);
   } catch (err) {
     const kind = failureKind(status);
     // The details go to the Cloudflare logs only, not to the public answer.
@@ -280,10 +320,23 @@ async function failedAnswer(cache: Cache, latestKey: Request, kind: Failure, max
     : Response.json({ error: "upstream unavailable" }, { status: 502, headers: { "Cache-Control": "no-store" } });
 }
 
-// Copy a cached response for the browser: short browser cache, plus debug headers.
-function forClient(res: Response, cacheState: "HIT" | "MISS" | "STALE", maxAgeS: number): Response {
+// Copy a cached response for the browser: short browser cache, plus debug headers. With `ifNoneMatch`
+// (undefined: no ETags for this kind), the copy gets an ETag from when it was fetched, and a browser that
+// already has that copy gets an empty 304 instead.
+function forClient(
+  res: Response,
+  cacheState: "HIT" | "MISS" | "STALE",
+  maxAgeS: number,
+  ifNoneMatch?: string | null,
+): Response {
+  const fetchedAt = res.headers.get("X-Fetched-At");
+  const etag = ifNoneMatch !== undefined && fetchedAt ? `"${fetchedAt}"` : null;
+  const headers = { "Cache-Control": `public, max-age=${maxAgeS}`, "X-Cache": cacheState };
+  if (etag && ifNoneMatch === etag) {
+    return new Response(null, { status: 304, headers: { ...headers, ETag: etag, "X-Fetched-At": fetchedAt! } });
+  }
   const out = new Response(res.body, res);
-  out.headers.set("Cache-Control", `public, max-age=${maxAgeS}`);
-  out.headers.set("X-Cache", cacheState);
+  for (const [name, value] of Object.entries(headers)) out.headers.set(name, value);
+  if (etag) out.headers.set("ETag", etag);
   return out;
 }

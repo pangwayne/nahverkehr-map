@@ -14,6 +14,7 @@ const STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 // First visit: Bonn Hauptbahnhof area. MapLibre uses [lon, lat].
 const BONN_CENTER: [number, number] = [7.0982, 50.7374];
 const START_ZOOM = 13;
+const NARROW_PX = 700; // the same width as the panel's phone layout
 
 // A reload starts where the map was left. Kept in this tab only until it is closed (sessionStorage),
 // never sent. Not kept across visits: nobody asked for that (privacy page, section 3).
@@ -88,9 +89,19 @@ export function createMap(container: HTMLElement): maplibregl.Map {
     ];
     map.addControl(controls[0]!, "top-right");
     map.addControl(controls[1]!, "bottom-right");
+    foldCredits();
+  };
+  // Phones: the credits start folded (one "i" button) instead of covering the bottom of the map. The footer
+  // keeps the sources visible at all times.
+  const foldCredits = () => {
+    if (window.innerWidth >= NARROW_PX) return;
+    const attrib = container.querySelector<HTMLDetailsElement>("details.maplibregl-ctrl-attrib");
+    attrib?.classList.remove("maplibregl-compact-show");
+    attrib?.removeAttribute("open");
   };
   addControls();
   onLangChange(addControls);
+  map.once("load", foldCredits);
 
   map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
   map.on("moveend", () => saveView(map));

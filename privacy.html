@@ -95,6 +95,22 @@
         the app deletes that old copy on your next visit.
       </p>
       <p>
+        If you <strong>save</strong> a stop or a route ("Save"), or change the route search <strong>options</strong>,
+        your browser keeps that in its local storage (entries <code>saved</code>: the saved stops and routes, with
+        their names and, for addresses and places, their coordinates; <code>prefs</code>: the options). My
+        location is never saved as a position: a saved route from "My location" asks for it again. Both entries
+        stay on your device and are never sent to me or anyone else. You can delete the saved items in the search
+        box ("Delete saved stops and routes") or both entries in your browser settings. They are strictly
+        necessary for the function you asked for (Section 25(2) No. 2 TDDDG).
+      </p>
+      <p>
+        So that the browser's Back button and reloading work, the app writes what is open (a stop, a trip, a
+        place, or a route search with its two ends, time and options) into the page address, after the "#", and
+        into this tab's history. Browsers do not send the part after "#" to the server, so it does not reach me.
+        It stays in your browser history like any visited page, until you delete it there. "My location" is never
+        written into the address. If you share a link ("Share"), whoever gets it can read that part.
+      </p>
+      <p>
         The app's own font is delivered from this site, not from an outside font service.
       </p>
 
@@ -168,12 +184,24 @@
         sent to me or anyone else; only the stop you then pick is loaded, like a tap on the map (section 2). The
         same goes for the "From" and "To" fields of the route search.
       </p>
+      <p id="places">
+        <strong>Address and place search:</strong> only if you choose the line "Search addresses and places" in
+        the search list (or press Enter when no stop was found), the text you typed is sent to my server, which
+        asks Transitous for matching addresses and places in Bonn, Köln, Düsseldorf and the area around them. So
+        that the same question is not asked twice, my server keeps the answer for up to a day, without any
+        information about who asked; like every request, the search is part of Cloudflare's technical data and
+        error logs (section 2). Nothing is sent while you type. A place held down on the map is not looked up at
+        all: it is only a point.
+      </p>
       <p>
         <strong>Route search:</strong> when you press "Find connections" (in German: Verbindungen suchen), the app
-        sends the start and destination you chose (stops, or your position for My location, section 5), the date
-        and time, and whether you want to leave or
-        arrive then, to my server, which asks Transitous for connections. "Earlier", "Later" and "Refresh" send the
-        same search again. Nothing is sent while you fill in the form. I do not store your searches and the app
+        sends the start and destination you chose (stops; for an address, a place or a point on the map its
+        coordinates; your position for My location, section 5), the date and time, whether you want to leave or
+        arrive then, and the options you changed (for example "no buses" or "at most 10 minutes' walk"), to my
+        server, which asks Transitous for connections. "Earlier", "Later", "Refresh" and "Other connections from
+        now" send the same search again. While a connection's details are open, the app loads the current times of
+        its rides once a minute, the same way a trip card does (one request per ride, only the trip). Nothing is
+        sent while you fill in the form. I do not store your searches and the app
         keeps no search history; the answer is shown only in the open page. Like every request, the search is part
         of Cloudflare's technical data and error logs (section 2). So that several people asking the same thing at
         the same moment cause only one request to Transitous, my server keeps the answer for up to two minutes, without

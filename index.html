@@ -31,7 +31,7 @@
         </svg>
         <input id="search" type="search" autocomplete="off" spellcheck="false" enterkeyhint="search"
           role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="search-results"
-          data-t-label="searchLabel" aria-label="Haltestelle suchen" data-t-placeholder="searchLabel" placeholder="Haltestelle suchen" />
+          data-t-label="searchLabel" aria-label="Haltestelle oder Adresse suchen" data-t-placeholder="searchLabel" placeholder="Haltestelle oder Adresse suchen" />
         <ul id="search-results" role="listbox" hidden></ul>
       </div>
       <div class="nav-right">
@@ -75,6 +75,12 @@
       <section id="board" aria-labelledby="board-title" hidden>
         <div class="board-head">
           <h2 id="board-title" tabindex="-1" aria-live="polite"></h2>
+          <!-- Phones: makes the sheet taller or smaller again (label set by src/web/panel.ts). -->
+          <button id="board-grow" type="button" aria-expanded="false" aria-label="Liste größer">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m6 15 6-6 6 6" />
+            </svg>
+          </button>
           <button id="board-close" type="button" data-t-label="close" aria-label="Schließen">×</button>
         </div>
         <div id="board-body"></div>

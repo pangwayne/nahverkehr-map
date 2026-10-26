@@ -2,7 +2,7 @@
 // and works out where along its stops the vehicle is right now.
 // Pure functions only (no DOM, no fetch), so everything here is unit tested.
 
-import type { Itinerary, Mode, TripStopPlace } from "./api";
+import type { Alert, Itinerary, Mode, TripStopPlace } from "./api";
 import { hexOrNull, lineName, tooEarly } from "./departures";
 import { type LonLat, decodePolyline } from "./geo";
 
@@ -12,6 +12,7 @@ export interface RouteStop {
   lon: number;
   lat: number;
   track: string | null;
+  scheduledTrack: string | null;
   arrMs: number | null; // predicted (includes delay); null at the first stop
   depMs: number | null; // predicted; null at the last stop
   schedArrMs: number | null;
@@ -31,6 +32,7 @@ export interface TripRoute {
   stops: RouteStop[];
   // First stop whose live times looked wrong (Phase 4.8); from there on, the stop times are the timetable.
   implausibleFrom: number | null;
+  alerts: Alert[]; // the trip's notices and its stops'
 }
 
 export type TripState = "before" | "moving" | "atStop" | "ended";
@@ -50,6 +52,7 @@ function toStop(p: TripStopPlace): RouteStop {
     lon: p.lon,
     lat: p.lat,
     track: p.track ?? null,
+    scheduledTrack: p.scheduledTrack ?? null,
     arrMs: ms(p.arrival),
     depMs: ms(p.departure),
     schedArrMs: ms(p.scheduledArrival),
@@ -66,8 +69,11 @@ export function tripRoute(itinerary: Itinerary): TripRoute | null {
 
   const stops: RouteStop[] = [];
   const path: LonLat[] = [];
+  const alerts: Alert[] = [];
   for (const leg of itinerary.legs) {
-    const legStops = [leg.from, ...(leg.intermediateStops ?? []), leg.to].map(toStop);
+    const places = [leg.from, ...(leg.intermediateStops ?? []), leg.to];
+    alerts.push(...(leg.alerts ?? []), ...places.flatMap((p) => p.alerts ?? []));
+    const legStops = places.map(toStop);
     const prev = stops[stops.length - 1];
     const start = legStops[0]!;
     if (prev && prev.name === start.name && prev.depMs === null) {
@@ -94,6 +100,7 @@ export function tripRoute(itinerary: Itinerary): TripRoute | null {
     path,
     stops,
     implausibleFrom,
+    alerts,
   };
 }
 

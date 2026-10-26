@@ -1,51 +1,102 @@
-// The route panel: pick a start and a destination stop and a time, then see up to 5 connections, open one
-// to see its details and draw it on the map, and follow any ride in its trip card.
-// Light on Transitous: a search runs only when the button is pressed, one at a time, never by itself.
-// Stop IDs and the time leave the phone, and with the location button (My location as start) the phone's
-// position too, as one end of the search: Transitous then plans the walk to the best stop.
+// The route panel: pick a start and a destination (a stop, an address or place, a point on the map, or My
+// location) and a time, then see up to 5 connections, open one to see its details and draw it on the map,
+// and follow any ride in its trip card.
+// Light on Transitous: a search runs only when the button is pressed (or a link / saved route is opened), one
+// at a time. An open connection's rides are refreshed through their trips (the same requests a trip card
+// makes), once a minute while the details are on screen; the search itself is never repeated by a timer.
+// What leaves the phone: the two ends (stop IDs, or positions for addresses, map points and My location),
+// the time and the travel settings, only with a search.
 
 import type * as maplibregl from "maplibre-gl";
-import { type PlanRequest, PlanError, fetchPlan, isStale } from "./api";
+import { collectNotices } from "./alerts";
+import { type Mode, type PlanRequest, PlanError, fetchPlan, fetchTrip, isStale } from "./api";
 import { berlinDateTime, fromBerlin, planTime } from "./berlintime";
 import type { Board } from "./board";
-import { badgeTextColor, delayState, formatClock } from "./departures";
+import { badgeTextColor, delayLevel, delayState, formatDelay, modeLabel } from "./departures";
+import { type EndRef, type RouteRef, type View, sameEnd } from "./endpoints";
 import { getLang, t, onLangChange } from "./i18n";
 import { startJourneyMap } from "./journeymap";
 import { fitPoints } from "./mapfit";
-import { shortName } from "./names";
-import { type PanelUser, ageLine, el, focusKey, focusPanel, openPanel, ownsPanel, renderPanel } from "./panel";
+import { shortName, townName } from "./names";
+import { linkTo, previousView, pushView, replaceView, stepBackQuietly } from "./nav";
+import {
+  type PanelUser,
+  ageLine,
+  button,
+  clock,
+  el,
+  focusKey,
+  focusPanel,
+  noticeList,
+  openPanel,
+  ownsPanel,
+  renderPanel,
+  shareLink,
+  toast,
+} from "./panel";
+import type { Spot } from "./places";
 import {
   type Journey,
   type JourneyLeg,
+  type JourneyState,
+  type LegStop,
   type Plan,
   type PlanFailure,
+  type RideChange,
   type RideLeg,
   type SubmittedSearch,
+  type Transfer,
+  type WalkLeg,
+  departed,
   durationText,
   firstRide,
   isPosition,
   journeyMinutes,
   journeyPath,
+  journeyState,
   parsePlan,
   planFailure,
   positionPlace,
   refreshRequest,
+  rideChanges,
+  transfersOf,
+  updateRide,
+  withRides,
 } from "./plan";
+import {
+  DEFAULT_PREFS,
+  EXTRA_CHOICES,
+  TRANSFER_CHOICES,
+  type TravelPrefs,
+  WALK_CHOICES,
+  anyMode,
+  changedPrefs,
+  loadPrefs,
+  prefsFromQuery,
+  prefsQuery,
+  savePrefs,
+} from "./prefs";
+import { type SavedRoute, isRouteSaved, isStopSaved, loadSaved, onSavedChange, savableRoute, toggleRoute } from "./saved";
 import { ageText, resetStatus, setStatus, setStatusNote, setStatusTitle } from "./status";
-import { attachStopSearch } from "./stopsearch";
+import { type SearchItem, attachStopSearch } from "./stopsearch";
 import type { Station } from "./stops";
+import { tripRoute } from "./trip";
 import type { TripRef } from "./tripcard";
 import { PLAN_AHEAD_MS, PLAN_PAST_MS, isInArea } from "../worker/transitous";
 
 const FETCH_TIMEOUT_MS = 15_000;
-const TICK_MS = 10_000; // the age line counts up; nothing is fetched again by itself
+const TICK_MS = 10_000; // the age line counts up; an open connection's rides refresh on the minute
+const DETAIL_POLL_MS = 60_000;
 const STALE_AFTER_S = 120;
 // A fix less sure than this gets a warning (it still counts): the walk and the stop may then be wrong.
 const ROUGH_LOCATION_M = 300;
 const FIT_MAX_ZOOM = 16; // a short trip would otherwise zoom in so far that the map shows nothing around it
+const RIDE_NOTICES = 2;
 
 export interface RoutePanel {
-  open(ends?: { from?: Station; to?: Station }): void;
+  open(ends?: { from?: Station | Spot; to?: Station | Spot }): void;
+  openSaved(route: SavedRoute): void;
+  restore(view: Extract<View, { kind: "route" | "journey" }>): void; // Back / Forward / a link
 }
 
 // "My location": the phone's position as one end of a search, sent as it is (see positionPlace).
@@ -56,13 +107,14 @@ interface Here {
   accuracyM: number; // how far off the phone says it may be
 }
 
-type Place = Station | Here;
+type Place = Station | Here | Spot;
 
 const isHere = (p: Place | null): p is Here => p !== null && "here" in p;
+const isSpot = (p: Place | null): p is Spot => p !== null && "kind" in p && p.kind === "spot";
 
 interface Field {
   input: HTMLInputElement;
-  place: Place | null; // a stop picked from the list, or My location; typing afterwards clears it
+  place: Place | null; // a stop or place picked from the list, or My location; typing afterwards clears it
 }
 
 type Outcome =
@@ -77,12 +129,25 @@ type Outcome =
     }
   | { kind: "failed"; failure: PlanFailure; retryAfterS: number | null };
 
+// An open connection kept current through its rides' trips.
+interface Followed {
+  origin: Journey; // as the search found it, to say what changed since
+  fetchedAtMs: number; // the oldest of its rides' data
+  lastTryMs: number;
+  failed: boolean; // the last refresh did not reach every ride
+  busy: boolean;
+  changes: RideChange[];
+}
+
 // `openTrip`: a ride in a connection's details was tapped (opens its trip card, which can come back here).
 export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: TripRef) => void): RoutePanel {
   const user: PanelUser = { onClose };
   const journeyMap = startJourneyMap(map);
   map.on("load", () => journeyMap.addLayers());
   let detail: Journey | null = null; // the connection whose details are open (kept while its trip card is open)
+  let followed: Followed | null = null;
+  let detailSeq = 0;
+  let pinned: Journey | null = null; // the connection someone was following when they asked for alternatives
   let built: ReturnType<typeof buildForm> | null = null;
   let outcome: Outcome = { kind: "none" };
   let lastSearch: SubmittedSearch | null = null; // the search whose answer is on screen
@@ -95,19 +160,31 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
   let fieldError: string | null = null;
   let locateSeq = 0; // number of the latest location lookup; an older one's answer is ignored
   let locating: { place: Place | null; text: string } | null = null; // a lookup is pending: From as it was
+  let prefs: TravelPrefs = loadPrefs();
+  let announce: () => string = () => ""; // the last result announcement, in the language shown
+  let pendingKey: string | null = null; // a connection to open once its search has answered (a link, Back)
 
   onLangChange(() => {
     if (!built) return;
     applyTexts();
+    built.announce.textContent = announce();
     if (!ownsPanel(user)) return;
-    if (detail) showDetails(detail, false);
+    if (detail) showDetails(detail, false, false);
     else showList();
   });
+  onSavedChange(() => {
+    if (!ownsPanel(user) || !built) return;
+    if (detail) showDetails(detail, false, false);
+    else render();
+  });
   setInterval(() => {
-    if (ownsPanel(user) && outcome.kind === "plan") renderStatus();
+    if (!ownsPanel(user)) return;
+    if (detail && followed && document.visibilityState === "visible" && Date.now() - followed.lastTryMs >= DETAIL_POLL_MS) {
+      void refreshDetail();
+    } else if (outcome.kind === "plan") renderStatus();
   }, TICK_MS);
 
-  function open(ends: { from?: Station; to?: Station } = {}): void {
+  function open(ends: { from?: Station | Spot; to?: Station | Spot } = {}): void {
     built ??= buildForm();
     if (ends.from) {
       cancelLocate(false);
@@ -120,13 +197,29 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     openPanel(user);
     applyTexts();
     showList();
+    pushView({ kind: "route", route: currentRef() });
     focusPanel();
+  }
+
+  // The route as the address shows it: the search on screen, else what the form holds so far.
+  function currentRef(): RouteRef {
+    if (lastSearch && outcome.kind === "plan") return refOf(lastSearch);
+    const b = built!;
+    return {
+      from: b.from.place ? endRef(b.from.place) : null,
+      to: b.to.place ? endRef(b.to.place) : null,
+      time: null,
+      arriveBy: false,
+      prefs: prefsQuery(prefs),
+    };
   }
 
   // The form and the connections. `focusOn`: the option to give focus back to (coming back from details).
   function showList(focusOn?: string): void {
     const b = built!;
     detail = null;
+    followed = null;
+    detailSeq++;
     journeyMap.show(null);
     renderPanel(user, t().routeTitle, [b.fold, b.form, b.results]);
     render();
@@ -137,11 +230,25 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
   }
 
   // One connection in full, and drawn on the map. `fit`: also move the map to show all of it.
-  function showDetails(j: Journey, fit = true): void {
+  // `follow`: it was just opened (not redrawn): start keeping it current.
+  function showDetails(j: Journey, fit = true, follow = true): void {
+    if (follow) {
+      detailSeq++;
+      // Only rides have live times to follow; walking all the way has nothing to refresh.
+      const rides = j.legs.some((l) => l.kind === "ride" && l.tripId !== null);
+      followed = !rides ? null : {
+        origin: j,
+        fetchedAtMs: outcome.kind === "plan" ? outcome.fetchedAtMs : Date.now(),
+        lastTryMs: Date.now(),
+        failed: false,
+        busy: false,
+        changes: [],
+      };
+    }
     detail = j;
-    const title = outcome.kind === "plan" && lastSearch ? searchName(lastSearch) : routeName();
+    const title = lastSearch ? searchName(lastSearch) : routeName();
     renderPanel(user, title, detailNodes(j));
-    journeyMap.show(j);
+    journeyMap.show(j, lastSearch ? { from: endName(lastSearch.from), to: endName(lastSearch.to) } : undefined);
     if (fit) {
       document.querySelector("#board")!.scrollTop = 0; // the list may have been scrolled down
       fitPoints(map, journeyPath(j), FIT_MAX_ZOOM);
@@ -149,12 +256,19 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     renderStatus();
   }
 
-  // Back from a ride's trip card.
-  function backToJourney(): void {
-    if (!detail) return;
-    openPanel(user);
-    showDetails(detail);
-    focusPanel();
+  // A connection was tapped in the list: its own history entry, so Back returns to the list.
+  function openDetails(j: Journey): void {
+    if (lastSearch) pushView({ kind: "journey", route: refOf(lastSearch), key: j.key });
+    showDetails(j);
+  }
+
+  // The list at once; the history steps back with it (or, without an entry for the list, gets one).
+  function backToList(): void {
+    const key = detail ? optionKey(detail) : undefined;
+    const back = previousView()?.kind === "route";
+    showList(key);
+    if (back) stepBackQuietly();
+    else if (lastSearch) replaceView({ kind: "route", route: refOf(lastSearch) });
   }
 
   function onClose(): void {
@@ -163,70 +277,214 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     if (outcome.kind === "searching") outcome = { kind: "none" };
     cancelLocate(true);
     journeyMap.show(null);
+    detailSeq++;
+    followed = null;
     resetStatus();
   }
 
+  // Fresh times for the open connection: each ride's trip, then the walks move along. The connection stays the
+  // same one (no other departure is picked); failures keep the last times with their age.
+  async function refreshDetail(): Promise<void> {
+    const j = detail;
+    const f = followed;
+    if (!j || !f || f.busy) return;
+    const mine = ++detailSeq;
+    f.busy = true;
+    f.lastTryMs = Date.now();
+    renderDetailFoot();
+    const rides = j.legs.filter((l): l is RideLeg => l.kind === "ride" && l.tripId !== null);
+    const answers = await Promise.allSettled(rides.map((r) => fetchTrip(r.tripId!, AbortSignal.timeout(FETCH_TIMEOUT_MS))));
+    if (mine !== detailSeq || detail !== j) return;
+    const updated = new Map<RideLeg, RideLeg>();
+    let failed = false;
+    let oldest = Infinity;
+    answers.forEach((a, i) => {
+      if (a.status !== "fulfilled") {
+        failed = true;
+        return;
+      }
+      const route = tripRoute(a.value.data);
+      const next = route ? updateRide(rides[i]!, route) : null;
+      if (!next) {
+        failed = true;
+        return;
+      }
+      if (isStale(a.value)) failed = true;
+      oldest = Math.min(oldest, a.value.fetchedAtMs);
+      updated.set(rides[i]!, next);
+    });
+    const next = withRides(j, updated);
+    f.busy = false;
+    f.failed = failed;
+    if (!failed && Number.isFinite(oldest)) f.fetchedAtMs = oldest;
+    f.changes = rideChanges(f.origin, next);
+    // The list shows the fresh times too, when going back to it.
+    if (outcome.kind === "plan") {
+      outcome.plan = { ...outcome.plan, journeys: outcome.plan.journeys.map((x) => (x.key === next.key ? next : x)) };
+    }
+    if (pinned?.key === next.key) pinned = next;
+    showDetails(next, false, false);
+  }
+
+  // Other connections from now, between the same two ends with the same settings. The one being followed
+  // stays at the top of the list until another is opened.
+  function findAlternatives(): void {
+    if (!lastSearch) return;
+    pinned = detail;
+    const request: PlanRequest = { ...lastSearch.request, time: planTime(Date.now()), arriveBy: false, cursor: null };
+    const next: SubmittedSearch = { ...lastSearch, request, isNow: true };
+    // This entry becomes the new list (not a step back: Back would then land on the old search).
+    replaceView({ kind: "route", route: refOf(next) });
+    showList();
+    void search(null, false, next);
+  }
+
   function detailNodes(j: Journey): HTMLElement[] {
-    const back = focusKey(el("button", "link-button route-back", `← ${t().routeBack}`) as HTMLButtonElement, "back");
-    back.type = "button";
-    back.addEventListener("click", () => showList(optionKey(j)));
+    const nodes: HTMLElement[] = [];
+    const back = button("link-button route-back", `← ${t().routeBack}`, "back");
+    back.addEventListener("click", backToList);
+    nodes.push(back);
 
     const summary = el("p", "route-summary");
     summary.append(clock(j.depMs, j.schedDepMs), " ", ...arrow(), " ", clock(j.arrMs, j.schedArrMs));
     const facts = [durationText(journeyMinutes(j) * 60_000), j.transfers ? t().routeTransfers(j.transfers) : t().routeDirect];
     summary.append(` · ${facts.join(" · ")}`);
+    nodes.push(summary);
+
+    const chips = el("div", "trip-chips");
+    if (j.legs.some((l) => l.kind === "ride")) {
+      const state = journeyState(j);
+      const s = stateText(state);
+      chips.append(el("span", `chip ${s.level}`, s.text));
+      if (state.tight && state.kind !== "missed") chips.append(el("span", "chip late", t().tightChange));
+    }
+    if (departed(j, Date.now())) chips.append(el("span", "chip unknown", t().departedAlready));
+    const other = otherStop(j, lastSearch);
+    if (other) chips.append(el("span", "chip unknown", t().fromNeighbourStop(other)));
+    if (chips.childElementCount) nodes.push(chips);
+
+    if (followed?.changes.length) {
+      const box = el("p", "board-note board-warn route-changes");
+      box.append(el("strong", "", `${t().changedSinceSearch} `), followed.changes.map(changeText).join(" · "));
+      box.setAttribute("role", "status");
+      nodes.push(box);
+    }
 
     const list = el("ol", "journey-legs");
-    j.legs.forEach((leg, i) => list.append(legItem(leg, i === j.legs.length - 1, j.cancelled)));
+    const changes = transfersOf(j);
+    j.legs.forEach((leg, i) => {
+      const change = leg.kind === "ride" ? changes.find((c) => c.ride === leg) : undefined;
+      const walkBefore = j.legs[i - 1]?.kind === "walk";
+      // A change without a walk shown (same platform or next to it): its own line with the time to spare.
+      if (change && !walkBefore) list.append(transferItem(change));
+      list.append(legItem(j, leg, i, changes));
+    });
+    nodes.push(list);
 
-    const foot = el("div", "route-foot");
+    const foot = el("div", "route-foot route-detail-foot");
     foot.append(el("span", "route-age"));
-    const whole = focusKey(el("button", "link-button", t().wholeRoute) as HTMLButtonElement, "whole");
-    whole.type = "button";
+    const actions = el("span", "foot-actions");
+    const refresh = button("link-button", t().routeRefresh, "refresh");
+    refresh.addEventListener("click", () => void refreshDetail());
+    const alternatives = button("link-button", t().routeAlternatives, "alternatives");
+    alternatives.addEventListener("click", findAlternatives);
+    const whole = button("link-button", t().wholeRoute, "whole");
     whole.addEventListener("click", () => fitPoints(map, journeyPath(j), FIT_MAX_ZOOM));
-    foot.append(whole);
-    return [back, summary, list, foot];
+    actions.append(refresh, alternatives, ...routeActions(j.key), whole);
+    foot.append(actions);
+    nodes.push(foot);
+    return nodes;
   }
 
-  function legItem(leg: JourneyLeg, last: boolean, cancelled: boolean): HTMLElement {
-    if (leg.kind === "walk") {
-      const li = el("li", "journey-leg walk");
-      const icon = el("span", "route-walk");
-      icon.insertAdjacentHTML("afterbegin", WALK_ICON);
-      li.append(icon, el("span", "", t().routeWalkMin(leg.minutes)));
-      const to = isPosition(leg.to) ? t().routeHere : shortName(leg.to.name);
-      if (last) li.append(el("span", "journey-to", t().routeWalkTo(to)));
-      return li;
-    }
-    const li = el("li", leg.cancelled || cancelled ? "journey-leg ride cancelled" : "journey-leg ride");
+  // Share and save for the search on screen (`key`: a connection, for a link that opens it).
+  function routeActions(key?: string): HTMLElement[] {
+    if (!lastSearch) return [];
+    const ref = refOf(lastSearch);
+    const share = button("link-button", t().share, "share");
+    share.addEventListener("click", () => {
+      const view: View = key ? { kind: "journey", route: shared(ref), key } : { kind: "route", route: shared(ref) };
+      const hasHere = ref.from?.kind === "here" || ref.to?.kind === "here";
+      void shareLink(linkTo(view), searchName(lastSearch!), hasHere ? t().shareWithoutLocation : undefined);
+    });
+    const savable = savableRoute(ref);
+    if (!savable) return [share];
+    const on = isRouteSaved(savable);
+    const save = button("link-button", on ? `★ ${t().routeSaved}` : t().routeSave, "save-route");
+    save.setAttribute("aria-pressed", String(on));
+    save.addEventListener("click", () => {
+      const now = toggleRoute(savable);
+      toast(now ? t().routeSavedToast : t().routeRemovedToast);
+    });
+    return [share, save];
+  }
+
+  function transferItem(c: Transfer): HTMLElement {
+    const li = el("li", `journey-leg change ${c.level}`);
+    li.append(el("span", "", transferText(c)));
+    return li;
+  }
+
+  function legItem(j: Journey, leg: JourneyLeg, i: number, changes: Transfer[]): HTMLElement {
+    if (leg.kind === "walk") return walkItem(j, leg, i, changes);
+    const li = el("li", leg.cancelled || j.cancelled ? "journey-leg ride cancelled" : "journey-leg ride");
     li.style.setProperty("--line", rideColor(leg));
-    li.append(legStop(leg.from.ms, leg.from.schedMs, leg.from.name, leg.from.platform));
+    li.append(legStop(leg.from.ms, leg.from.schedMs, leg.from));
 
     const mid = el("div", "journey-ride");
     if (leg.staySeated) mid.append(el("p", "journey-seated", t().routeStaySeated(leg.line)));
     const head = el("p", "journey-line");
     head.append(lineBadge(leg), el("span", "journey-headsign", shortName(leg.headsign)));
     mid.append(head);
-    const facts = el("p", "route-info", t().routeStops(leg.stopsBetween + 1));
+    const facts = el("p", "route-info");
+    const kind = modeLabel(leg.mode, leg.line);
+    facts.append(...(kind ? [el("strong", "", kind), " · "] : []), t().routeStops(leg.stopsBetween + 1));
     const state = delayState((leg.from.ms - leg.from.schedMs) / 1000, leg.realTime, leg.cancelled);
     facts.append(" · ", el("span", `state ${state.level}`, state.text));
     mid.append(facts);
+    const notices = noticeList(collectNotices([leg.alerts], Date.now()), RIDE_NOTICES);
+    if (notices) mid.append(notices);
     if (leg.tripId) {
       const tripId = leg.tripId;
-      const open = focusKey(el("button", "link-button", t().routeShowRide) as HTMLButtonElement, `ride-${tripId}`);
-      open.type = "button";
+      const open = button("link-button", t().routeShowRide, `ride-${tripId}`);
       open.addEventListener("click", () =>
-        openTrip({
-          tripId,
-          line: leg.line,
-          color: rideColor(leg),
-          focus: [leg.from.lon, leg.from.lat],
-          back: { label: () => t().routeBackToJourney, run: backToJourney },
-        }),
+        openTrip({ tripId, line: leg.line, color: rideColor(leg), focus: [leg.from.lon, leg.from.lat] }),
       );
       mid.append(open);
     }
-    li.append(mid, legStop(leg.to.ms, leg.to.schedMs, leg.to.name, leg.to.platform));
+    li.append(mid, legStop(leg.to.ms, leg.to.schedMs, leg.to));
+    return li;
+  }
+
+  // A walk: how long, where to, the change it makes (time to spare), and the directions when there are some.
+  function walkItem(j: Journey, leg: WalkLeg, i: number, changes: Transfer[]): HTMLElement {
+    const li = el("li", "journey-leg walk");
+    const head = el("div", "walk-head");
+    const icon = el("span", "route-walk");
+    icon.insertAdjacentHTML("afterbegin", WALK_ICON);
+    head.append(icon, el("span", "", t().routeWalkMin(leg.minutes)));
+    const last = i === j.legs.length - 1;
+    const first = i === 0;
+    if (first && isPosition(leg.from)) head.append(el("span", "journey-to", t().routeWalkFrom(endName(lastSearch?.from ?? null))));
+    const to = isPosition(leg.to) ? endName(lastSearch?.to ?? null) : shortName(leg.to.name);
+    if (last || first || isPosition(leg.to)) head.append(el("span", "journey-to", t().routeWalkTo(to)));
+    if (leg.schematic) head.append(el("span", "journey-to", `(${t().walkStraight})`));
+    li.append(head);
+
+    const next = j.legs[i + 1];
+    const change = next?.kind === "ride" ? changes.find((c) => c.ride === next) : undefined;
+    if (change) li.append(el("p", `walk-change ${change.level}`, transferText(change)));
+
+    if (leg.steps.length > 1 || leg.steps.some((s) => s.kind === "stairs" || s.kind === "elevator")) {
+      const details = el("details", "walk-steps");
+      details.append(el("summary", "", t().walkDirections(leg.steps.length)));
+      const ol = el("ol", "");
+      for (const step of leg.steps) ol.append(el("li", `step ${step.kind}`, stepText(step)));
+      details.append(ol);
+      li.append(details);
+    }
+    const show = button("link-button", t().walkOnMap, `walk-${i}`);
+    show.addEventListener("click", () => fitPoints(map, leg.path, 18));
+    li.append(show);
     return li;
   }
 
@@ -303,6 +561,8 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     moment.append(dateLabel, date, timeLabel, time, now);
     when.append(legend, modes, moment);
 
+    const options = prefsBox();
+
     // While My location is in a field: that searching sends it, and a warning when the fix is rough.
     const hereNote = el("p", "route-here");
     hereNote.setAttribute("aria-live", "polite");
@@ -313,25 +573,26 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
 
     const submit = el("button", "route-submit") as HTMLButtonElement;
     submit.type = "submit";
-    form.append(from.wrap, to.wrap, hereNote, when, error, submit);
+    form.append(from.wrap, to.wrap, hereNote, when, options.box, error, submit);
     form.addEventListener("submit", (e) => {
       e.preventDefault();
+      pinned = null;
       void search(null);
     });
 
     // Results: kept apart from the form so a redraw never touches what the user is typing.
     const results = el("div", "route-results");
-    const announce = el("p", "sr-only");
-    announce.setAttribute("aria-live", "polite");
+    const announceEl = el("p", "sr-only");
+    announceEl.setAttribute("aria-live", "polite");
     const body = el("div", "");
-    results.append(announce, body);
+    results.append(announceEl, body);
 
     const state = {
       fold,
       form,
       results,
       body,
-      announce,
+      announce: announceEl,
       from: fromState,
       to: toState,
       fromLabel: from.label,
@@ -349,6 +610,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       error,
       hereNote,
       submit,
+      options,
       isNow: true,
     };
 
@@ -364,8 +626,90 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     return state;
   }
 
-  function pick(field: Field, station: Station): void {
-    setField(field, station, shortName(station.name));
+  // Travel settings: folded under "Options", with how many differ from the default.
+  function prefsBox() {
+    const box = el("details", "route-prefs") as HTMLDetailsElement;
+    const summary = el("summary", "");
+    box.append(summary);
+    const inner = el("div", "route-prefs-body");
+    const modes = el("fieldset", "route-prefs-modes");
+    const modesLegend = el("legend", "");
+    modes.append(modesLegend);
+    const checks = (["bus", "tram", "sbahn", "train"] as const).map((key) => {
+      const label = el("label", "pref-check");
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.addEventListener("change", () => {
+        const next = { ...prefs, [key]: input.checked };
+        if (!anyMode(next)) {
+          input.checked = true;
+          showFieldError(t().prefsNeedMode, input);
+          return;
+        }
+        setPrefs(next);
+      });
+      const text = el("span", "");
+      label.append(input, text);
+      modes.append(label);
+      return { key, input, text };
+    });
+    const select = (id: string, values: readonly (number | null)[], onPick: (v: number | null) => void) => {
+      const wrap = el("label", "pref-select") as HTMLLabelElement;
+      wrap.htmlFor = id;
+      const text = el("span", "");
+      const sel = document.createElement("select");
+      sel.id = id;
+      sel.className = "route-input";
+      sel.addEventListener("change", () => onPick(values[sel.selectedIndex] ?? null));
+      wrap.append(text, sel);
+      return { wrap, text, sel, values };
+    };
+    const transfers = select("pref-transfers", TRANSFER_CHOICES, (v) => setPrefs({ ...prefs, maxTransfers: v }));
+    const extra = select("pref-extra", EXTRA_CHOICES, (v) => setPrefs({ ...prefs, extraMin: v ?? 0 }));
+    const walk = select("pref-walk", WALK_CHOICES, (v) => setPrefs({ ...prefs, walkMin: v ?? DEFAULT_PREFS.walkMin }));
+    const reset = button("link-button", "", "prefs-reset");
+    reset.addEventListener("click", () => setPrefs({ ...DEFAULT_PREFS }));
+    inner.append(modes, transfers.wrap, extra.wrap, walk.wrap, el("p", "route-prefs-note"), reset);
+    box.append(inner);
+    return { box, summary, modesLegend, checks, transfers, extra, walk, reset, note: inner.querySelector("p")! };
+  }
+
+  function setPrefs(next: TravelPrefs, remember = true): void {
+    prefs = next;
+    if (remember) savePrefs(prefs);
+    fieldError = null;
+    applyPrefs();
+    render();
+  }
+
+  // The settings box as `prefs` says, in the current language.
+  function applyPrefs(): void {
+    if (!built) return;
+    const o = built.options;
+    const x = t();
+    const n = changedPrefs(prefs);
+    o.summary.textContent = n ? x.prefsChanged(n) : x.prefsTitle;
+    o.modesLegend.textContent = x.prefsModes;
+    const names = { bus: x.modeBus, tram: x.prefsTram, sbahn: x.modeSBahn, train: x.prefsTrain };
+    for (const c of o.checks) {
+      c.input.checked = prefs[c.key];
+      c.text.textContent = names[c.key];
+    }
+    const fill = (s: typeof o.transfers, label: string, text: (v: number | null) => string, current: number | null) => {
+      s.text.textContent = label;
+      s.sel.replaceChildren(...s.values.map((v) => el("option", "", text(v))));
+      s.sel.selectedIndex = Math.max(0, s.values.indexOf(current));
+    };
+    fill(o.transfers, x.prefsTransfers, (v) => (v === null ? x.prefsAny : v === 0 ? x.prefsDirectOnly : x.prefsAtMost(v)), prefs.maxTransfers);
+    fill(o.extra, x.prefsExtra, (v) => (v ? `+ ${v} min` : x.prefsNormal), prefs.extraMin);
+    fill(o.walk, x.prefsWalk, (v) => x.prefsUpTo(v ?? 0), prefs.walkMin);
+    o.note.textContent = x.prefsNote;
+    o.reset.textContent = x.prefsReset;
+    o.reset.hidden = n === 0;
+  }
+
+  function pick(field: Field, place: Station | Spot): void {
+    setField(field, place, isSpot(place) ? place.name : shortName(place.name));
   }
 
   function setField(field: Field, place: Place | null, text: string): void {
@@ -458,7 +802,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     return null;
   }
 
-  function showFieldError(text: string, input: HTMLInputElement): void {
+  function showFieldError(text: string, input: HTMLElement): void {
     fieldError = text;
     input.setAttribute("aria-invalid", "true");
     input.focus();
@@ -466,11 +810,14 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
   }
 
   // `cursor`: an earlier/later page of the last search; `again`: refresh it. Both use only the submitted
-  // search, never the form, so unsent edits in the form stay as they are. Neither: a new search from the form.
-  async function search(cursor: string | null, again = false): Promise<void> {
+  // search, never the form, so unsent edits in the form stay as they are. `given`: a search made elsewhere
+  // (alternatives, a link). None of them: a new search from the form.
+  async function search(cursor: string | null, again = false, given?: SubmittedSearch): Promise<void> {
     const b = built!;
     let submitted: SubmittedSearch;
-    if (cursor !== null || again) {
+    if (given) {
+      submitted = given;
+    } else if (cursor !== null || again) {
       if (!lastSearch) return;
       const request = again ? refreshRequest(lastSearch, Date.now()) : { ...lastSearch.request, cursor };
       if (!request) {
@@ -486,11 +833,19 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     } else {
       const request = checkForm();
       if (!request) return;
-      // checkForm only passes with both stops picked
-      submitted = { request, isNow: b.isNow, from: stopName(b.from.place!), to: stopName(b.to.place!) };
+      // checkForm only passes with both ends picked
+      const from = b.from.place!;
+      const to = b.to.place!;
+      submitted = {
+        request,
+        isNow: b.isNow,
+        from: placeName(from),
+        to: placeName(to),
+        ends: { from: endRef(from), to: endRef(to) },
+      };
     }
     const { request } = submitted;
-    const fromForm = cursor === null && !again;
+    const fromForm = cursor === null && !again && !given;
 
     controller?.abort();
     const mine = new AbortController();
@@ -508,15 +863,20 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       // A stale copy (first search, page or refresh) is shown, but marked: the latest try for news failed.
       outcome = {
         kind: "plan",
-        plan: parsePlan(res.data),
+        plan: parsePlan(res.data, request.prefs?.["walk"] !== undefined),
         fetchedAtMs: res.fetchedAtMs,
         refreshFailed: isStale(res),
         pageFailed: null,
       };
       const n = outcome.plan.journeys.length + (outcome.plan.walk ? 1 : 0);
-      b.announce.textContent = n ? t().routeFound(n) : t().routeNone;
+      announce = () => (n ? t().routeFound(n) : t().routeNone);
+      b.announce.textContent = announce();
       found = n > 0;
-      if (fromForm) folded = found; // fold only when there is something to look at
+      if (fromForm || given) folded = found; // fold only when there is something to look at
+      if (ownsPanel(user) && !detail) {
+        const route = refOf(submitted);
+        replaceView(pendingKey === null ? { kind: "route", route } : { kind: "journey", route, key: pendingKey });
+      }
     } catch (err) {
       if (controller !== mine) return;
       // Anything that is not a refusal from the Worker (a bug while reading the answer, say) counts as "no
@@ -529,12 +889,15 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       } else if (cursor !== null && previous.kind === "plan") {
         const pageFailed = { failure: planFailure(failure.status, navigator.onLine), retryAfterS: failure.retryAfterS };
         outcome = { ...previous, pageFailed };
-        b.announce.textContent = failureText(pageFailed.failure, pageFailed.retryAfterS);
+        announce = () => failureText(pageFailed.failure, pageFailed.retryAfterS);
+        b.announce.textContent = announce();
       } else {
-        outcome = { kind: "failed", failure: planFailure(failure.status, navigator.onLine), retryAfterS: failure.retryAfterS };
+        const failed = { failure: planFailure(failure.status, navigator.onLine), retryAfterS: failure.retryAfterS };
+        outcome = { kind: "failed", ...failed };
         // A failed search from the form keeps the form open; a failed page keeps the fold as it was.
-        if (fromForm) folded = found = false;
-        b.announce.textContent = failureText(outcome.failure, outcome.retryAfterS);
+        if (fromForm || given) folded = found = false;
+        announce = () => failureText(failed.failure, failed.retryAfterS);
+        b.announce.textContent = announce();
       }
     } finally {
       clearTimeout(timer);
@@ -542,8 +905,19 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     }
     render();
     if (!ownsPanel(user)) return;
+    // A connection asked for by a link or Back: open it now that its search has answered.
+    if (pendingKey !== null) {
+      const key = pendingKey;
+      pendingKey = null;
+      const j = outcome.kind === "plan" ? outcome.plan.journeys.find((x) => x.key === key) : undefined;
+      if (j) {
+        showDetails(j);
+        return;
+      }
+      toast(t().journeyGone);
+    }
     if (keep) refocus(b.body, keep);
-    else if (fromForm) {
+    else if (fromForm || given) {
       // Folded, the summary and the heading both fit at the top: show both instead of scrolling half of it away.
       if (!b.form.hidden) b.body.querySelector<HTMLElement>("h3")?.focus();
       else {
@@ -565,9 +939,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     if (locating) return refuse(t().routeLocating, b.from.input);
     if (!from) return refuse(t().routePickFrom, b.from.input);
     if (!to) return refuse(t().routePickTo, b.to.input);
-    // My location at both ends is the same place too (the Worker takes a position at one end only).
-    const same = isHere(from) || isHere(to) ? isHere(from) && isHere(to) : from.id === to.id;
-    if (same) return refuse(t().routeSameStop, b.to.input);
+    if (placeParam(from) === placeParam(to)) return refuse(t().routeSameStop, b.to.input);
 
     let ms = Date.now();
     if (b.isNow) {
@@ -582,15 +954,14 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       if (picked.note === "twice") timeNote = t().routeTimeTwice;
       if (picked.note === "skipped") timeNote = t().routeTimeSkipped(berlinDateTime(ms).time);
     }
-    return { from: placeParam(from), to: placeParam(to), time: planTime(ms), arriveBy: b.arrive.input.checked, cursor: null };
-  }
-
-  function placeParam(p: Place): string {
-    return isHere(p) ? positionPlace(p.lat, p.lon) : p.planStopId;
-  }
-
-  function placeName(p: Place): string {
-    return endName(stopName(p));
+    return {
+      from: placeParam(from),
+      to: placeParam(to),
+      time: planTime(ms),
+      arriveBy: b.arrive.input.checked,
+      cursor: null,
+      prefs: prefsQuery(prefs),
+    };
   }
 
   function applyTexts(): void {
@@ -598,7 +969,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     const x = t();
     b.fromLabel.textContent = x.routeFrom;
     b.toLabel.textContent = x.routeTo;
-    b.from.input.placeholder = x.routeFromHint;
+    if (!locating) b.from.input.placeholder = x.routeFromHint;
     b.to.input.placeholder = x.routeToHint;
     b.locate.setAttribute("aria-label", x.routeUseLocation);
     b.locate.title = x.routeUseLocation;
@@ -611,10 +982,11 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     b.timeLabel.textContent = x.routeTime;
     b.now.textContent = x.routeNow;
     for (const field of [b.from, b.to]) if (isHere(field.place)) field.input.value = x.routeHere;
+    applyPrefs();
   }
 
   function render(): void {
-    if (!built || !ownsPanel(user)) return;
+    if (!built || !ownsPanel(user) || detail) return;
     const b = built;
     const searching = outcome.kind === "searching";
     b.submit.disabled = searching;
@@ -666,28 +1038,61 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     const s = lastSearch;
     const text = el("span", "route-fold-text");
     text.append(el("b", "", endName(s.from)), " ", ...arrow(), " ", el("b", "", endName(s.to)), ` · ${whenText(s)}`);
+    const n = Object.keys(s.request.prefs ?? {}).length;
+    if (n) text.append(` · ${t().prefsChanged(n)}`);
     b.fold.replaceChildren(text, el("span", "route-fold-action", hide ? t().routeEdit : t().routeFoldHide));
   }
 
   function resultNodes(): HTMLElement[] {
-    if (outcome.kind === "none") return [];
+    if (outcome.kind === "none") return savedRoutesNodes();
     if (outcome.kind === "searching") return [el("p", "board-note", t().routeSearching)];
     if (outcome.kind === "failed") {
-      return [el("p", "board-note board-error", failureText(outcome.failure, outcome.retryAfterS))];
+      return [el("p", "board-note board-error", failureText(outcome.failure, outcome.retryAfterS)), ...savedRoutesNodes()];
     }
 
     const { plan } = outcome;
+    const now = Date.now();
     const heading = el("h3", "route-heading", t().routeResults);
     heading.tabIndex = -1;
     const nodes: HTMLElement[] = [heading];
+
+    if (pinned) {
+      const followedOne = pinned;
+      nodes.push(el("p", "route-subheading", t().routeYourJourney));
+      const list = el("ul", "route-options pinned");
+      list.append(journeyOption(followedOne, () => openDetails(followedOne), now, lastSearch));
+      nodes.push(list);
+      nodes.push(el("p", "route-subheading", t().routeOthersNow));
+    }
+
     if (!plan.journeys.length && !plan.walk) {
       nodes.push(el("p", "board-note", t().routeNone));
+      // Strict settings may be why: say so, with a way to search again without them.
+      if (lastSearch && Object.keys(lastSearch.request.prefs ?? {}).length) {
+        nodes.push(el("p", "board-note", t().prefsMaybeWhy));
+        const relax = button("route-page", t().prefsResetSearch, "relax");
+        relax.addEventListener("click", () => {
+          setPrefs({ ...DEFAULT_PREFS });
+          void search(null, false, { ...lastSearch!, request: { ...lastSearch!.request, prefs: {}, cursor: null } });
+        });
+        nodes.push(relax);
+      }
     } else {
+      // Connections that have already left (an arrive-by search, or a list left open) go below the others,
+      // marked, so they are not taken for something still to catch.
+      const coming = plan.journeys.filter((j) => !departed(j, now));
+      const gone = plan.journeys.filter((j) => departed(j, now));
       const list = el("ul", "route-options");
       const walk = plan.walk;
-      if (walk) list.append(walkOption(walk, () => showDetails(walk)));
-      for (const j of plan.journeys) list.append(journeyOption(j, () => showDetails(j)));
-      nodes.push(list);
+      if (walk) list.append(walkOption(walk, () => openDetails(walk)));
+      for (const j of coming) list.append(journeyOption(j, () => openDetails(j), now, lastSearch));
+      if (list.childElementCount) nodes.push(list);
+      if (gone.length) {
+        nodes.push(el("p", "route-subheading", t().departedHeading));
+        const past = el("ul", "route-options past");
+        for (const j of gone) past.append(journeyOption(j, () => openDetails(j), now, lastSearch));
+        nodes.push(past);
+      }
     }
 
     const pager = el("div", "route-pager");
@@ -699,17 +1104,34 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
 
     const foot = el("div", "route-foot");
     foot.append(el("span", "route-age"));
-    const refresh = focusKey(el("button", "link-button", t().routeRefresh) as HTMLButtonElement, "refresh");
-    refresh.type = "button";
+    const actions = el("span", "foot-actions");
+    const refresh = button("link-button", t().routeRefresh, "refresh");
     refresh.addEventListener("click", () => void search(null, true));
-    foot.append(refresh);
+    actions.append(refresh, ...routeActions());
+    foot.append(actions);
     nodes.push(foot);
     return nodes;
   }
 
+  // Saved routes under an empty form: one tap fills it in and searches.
+  function savedRoutesNodes(): HTMLElement[] {
+    const routes = loadSaved().routes;
+    if (!routes.length) return [];
+    const nodes: HTMLElement[] = [el("h3", "route-heading", t().savedRoutes)];
+    const list = el("ul", "saved-routes");
+    routes.forEach((r, i) => {
+      const li = el("li", "");
+      const btn = button("saved-route", `${endRefName(r.from)} → ${endRefName(r.to)}`, `saved-${i}`);
+      btn.addEventListener("click", () => openSaved(r));
+      li.append(btn);
+      list.append(li);
+    });
+    nodes.push(list);
+    return nodes;
+  }
+
   function pagerButton(text: string, key: string, cursor: string): HTMLElement {
-    const btn = focusKey(el("button", "route-page", text) as HTMLButtonElement, key);
-    btn.type = "button";
+    const btn = button("route-page", text, key);
     btn.addEventListener("click", () => void search(cursor));
     return btn;
   }
@@ -717,6 +1139,12 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
   // Status line and the age line under the connections or details (fresh: green; old or not refreshed: red).
   function renderStatus(): void {
     const title = outcome.kind === "plan" && lastSearch ? searchName(lastSearch) : routeName();
+    if (detail && followed) {
+      const ageS = Math.max(0, (Date.now() - followed.fetchedAtMs) / 1000);
+      setStatus(title, ageS, followed.failed);
+      renderDetailFoot();
+      return;
+    }
     if (outcome.kind === "plan") {
       const ageS = Math.max(0, (Date.now() - outcome.fetchedAtMs) / 1000);
       const old = ageS > STALE_AFTER_S;
@@ -732,17 +1160,132 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     }
   }
 
+  // The age line under an open connection: how old its rides' times are, and that they refresh by themselves.
+  function renderDetailFoot(): void {
+    if (!followed) return;
+    const ageS = Math.max(0, (Date.now() - followed.fetchedAtMs) / 1000);
+    const old = ageS > STALE_AFTER_S;
+    const slot = document.querySelector("#board-body .route-age");
+    const text = followed.busy
+      ? `${ageText(ageS, old)} · ${t().loading}`
+      : followed.failed
+        ? ageText(ageS, old, true)
+        : `${ageText(ageS, old)} · ${t().everyMinute}`;
+    slot?.replaceChildren(ageLine(text, old || followed.failed));
+  }
+
   function routeName(): string {
     const b = built!;
     const from = b.from.place;
     const to = b.to.place;
-    return from && to ? `${placeName(from)} → ${placeName(to)}` : t().routeTitle;
+    return from && to ? `${endName(placeName(from))} → ${endName(placeName(to))}` : t().routeTitle;
   }
 
-  return { open };
+  // Fill the form from route ends (a saved route, a link). Stops are looked up in the stop list; My location
+  // is asked for again. Returns false when an end cannot be used (an unknown stop).
+  async function fillEnds(ends: { from: EndRef | null; to: EndRef | null }): Promise<boolean> {
+    await board.stationsReady;
+    const b = built!;
+    let ok = true;
+    const toPlace = (e: EndRef | null): Place | null => {
+      if (!e || e.kind === "here") return null;
+      if (e.kind === "spot") return e;
+      const station = board.stations().find((s) => s.id === e.id) ?? null;
+      if (!station) ok = false;
+      return station;
+    };
+    cancelLocate(false);
+    for (const [field, end] of [
+      [b.from, ends.from],
+      [b.to, ends.to],
+    ] as const) {
+      const place = toPlace(end);
+      setField(field, place, place ? (isSpot(place) ? place.name : shortName((place as Station).name)) : "");
+    }
+    return ok;
+  }
+
+  // A saved route: fill in the form and search (with My location: find it first, then the user searches).
+  function openSaved(r: SavedRoute): void {
+    built ??= buildForm();
+    openPanel(user);
+    applyTexts();
+    pushView({ kind: "route", route: { from: r.from, to: r.to, time: null, arriveBy: false, prefs: r.prefs } });
+    void (async () => {
+      const ok = await fillEnds(r);
+      if (!ownsPanel(user)) return;
+      setPrefs(prefsFromQuery(r.prefs), false);
+      built!.isNow = true;
+      built!.arrive.input.checked = false;
+      built!.depart.input.checked = true;
+      fillNow();
+      folded = false;
+      pinned = null;
+      showList();
+      if (!ok) {
+        showFieldError(t().savedStopGone, built!.from.input);
+        return;
+      }
+      if (r.from.kind === "here" || r.to.kind === "here") {
+        if (r.from.kind === "here") void useLocation();
+        return;
+      }
+      void search(null);
+    })();
+  }
+
+  // Back / Forward / a link: the search (and connection) of that history entry. The one on screen is reused
+  // when it is the same search; else the form is filled in and the search runs again (a link carries the
+  // search, not the connection's times, so these are fresh).
+  function restore(view: Extract<View, { kind: "route" | "journey" }>): void {
+    built ??= buildForm();
+    openPanel(user);
+    applyTexts();
+    const key = view.kind === "journey" ? view.key : null;
+    if (lastSearch && outcome.kind === "plan" && sameRoute(refOf(lastSearch), view.route)) {
+      const j = key ? outcome.plan.journeys.find((x) => x.key === key) : undefined;
+      if (j) showDetails(j);
+      else showList(detail ? optionKey(detail) : undefined);
+      return;
+    }
+    showList();
+    void (async () => {
+      const ok = await fillEnds(view.route);
+      if (!ownsPanel(user)) return;
+      setPrefs(prefsFromQuery(view.route.prefs), false);
+      const b = built!;
+      b.arrive.input.checked = view.route.arriveBy;
+      b.depart.input.checked = !view.route.arriveBy;
+      b.isNow = view.route.time === null;
+      if (view.route.time) {
+        const ms = Date.parse(view.route.time);
+        const { date, time } = berlinDateTime(ms);
+        b.date.value = date;
+        b.time.value = time;
+        if (ms < Date.now() - PLAN_PAST_MS) b.isNow = true; // an old link: from now instead
+      }
+      if (b.isNow) fillNow();
+      folded = false;
+      render();
+      if (!ok) {
+        showFieldError(t().savedStopGone, b.from.input);
+        return;
+      }
+      if (!b.from.place || !b.to.place) {
+        // A link without the start (it was "My location" for whoever shared it): ask for one.
+        if (!b.from.place) showFieldError(t().routePickFrom, b.from.input);
+        return;
+      }
+      pendingKey = key;
+      void search(null);
+    })();
+  }
+
+  return { open, openSaved, restore };
 }
 
-// Wires one From/To field to the shared stop search (the same combobox as the header search).
+// Wires one From/To field to the shared stop search (the same combobox as the header search), with the place
+// search for addresses and landmarks, and saved stops while it is empty.
 // `onEdit`: the user typed in or picked for this field (before the change is applied).
 function attachStopSearchField(
   board: Board,
@@ -751,6 +1294,13 @@ function attachStopSearchField(
   onChange: () => void,
   onEdit?: () => void,
 ): void {
+  const set = (place: Place, text: string) => {
+    onEdit?.();
+    field.place = place;
+    field.input.value = text;
+    field.input.removeAttribute("aria-invalid");
+    onChange();
+  };
   attachStopSearch({
     input: field.input,
     list,
@@ -762,13 +1312,13 @@ function attachStopSearchField(
       field.input.removeAttribute("aria-invalid");
     },
     openOnFocus: () => field.place === null,
-    onPick(station) {
-      onEdit?.();
-      field.place = station;
-      field.input.value = shortName(station.name);
-      field.input.removeAttribute("aria-invalid");
-      onChange();
-    },
+    onPick: (station) => set(station, shortName(station.name)),
+    onPickSpot: (spot) => set(spot, spot.name),
+    emptyItems: (): SearchItem[] =>
+      loadSaved()
+        .stops.map((s) => board.stations().find((x) => x.id === s.id))
+        .filter((s): s is Station => s !== undefined && isStopSaved(s.id))
+        .map((s) => ({ label: shortName(s.name), sub: t().saved, kind: "saved" as const, run: () => set(s, shortName(s.name)) })),
   });
 }
 
@@ -796,6 +1346,55 @@ function failureText(failure: PlanFailure, retryAfterS: number | null): string {
 
 const optionKey = (j: Journey) => `j-${j.key}`;
 
+// What is sent for a route end: a stop ID, or a position (My location, an address, a point on the map).
+function placeParam(p: Place): string {
+  if (isHere(p) || isSpot(p)) return positionPlace(p.lat, p.lon);
+  return p.planStopId;
+}
+
+// A route end's name as shown; null for My location (named in the language shown at the time).
+function placeName(p: Place): string | null {
+  if (isHere(p)) return null;
+  return isSpot(p) ? p.name : shortName(p.name);
+}
+
+function endRef(p: Place): EndRef {
+  if (isHere(p)) return { kind: "here" };
+  if (isSpot(p)) return p;
+  return { kind: "stop", id: p.id, name: shortName(p.name) };
+}
+
+function endRefName(e: EndRef): string {
+  return e.kind === "here" ? t().routeHere : e.name;
+}
+
+function refOf(s: SubmittedSearch): RouteRef {
+  return {
+    from: s.ends.from,
+    to: s.ends.to,
+    time: s.isNow ? null : s.request.time,
+    arriveBy: s.request.arriveBy,
+    prefs: s.request.prefs ?? {},
+  };
+}
+
+// For a link: My location is left out (shareableView does the same for whole views).
+function shared(r: RouteRef): RouteRef {
+  const strip = (e: EndRef | null) => (e?.kind === "here" ? null : e);
+  return { ...r, from: strip(r.from), to: strip(r.to) };
+}
+
+function sameRoute(a: RouteRef, b: RouteRef): boolean {
+  const ends = (x: EndRef | null, y: EndRef | null) => (x === null && y === null) || sameEnd(x, y);
+  return (
+    ends(a.from, b.from) &&
+    ends(a.to, b.to) &&
+    a.time === b.time &&
+    a.arriveBy === b.arriveBy &&
+    JSON.stringify(Object.entries(a.prefs).sort()) === JSON.stringify(Object.entries(b.prefs).sort())
+  );
+}
+
 function rideColor(leg: RideLeg): string {
   return leg.color ?? (leg.mode === "BUS" ? "#4a5a6a" : "#1565c0");
 }
@@ -808,30 +1407,113 @@ function lineBadge(leg: RideLeg): HTMLElement {
   return badge;
 }
 
-// A stop in the details: the time (planned struck through when different), its name and platform.
-function legStop(ms: number, schedMs: number, name: string, platform: string | null): HTMLElement {
+// A line badge with what kind of vehicle it is in front: a small icon for the eye, the word for screen
+// readers. A bus with a train-like name (RE5X, a replacement bus) reads "Bus" before it is opened.
+function rideChip(leg: RideLeg): HTMLElement {
+  const chip = el("span", "route-ride");
+  const icon = el("span", "mode-icon");
+  icon.insertAdjacentHTML("afterbegin", modeIcon(leg.mode));
+  icon.setAttribute("aria-hidden", "true");
+  const kind = modeLabel(leg.mode, leg.line);
+  chip.append(icon);
+  if (kind) chip.append(srOnly(`${kind} `));
+  chip.append(lineBadge(leg));
+  return chip;
+}
+
+function modeIcon(mode: Mode): string {
+  if (mode === "BUS" || mode === "ODM" || mode === "COACH") return BUS_ICON;
+  if (mode === "TRAM" || mode === "SUBWAY" || mode === "FUNICULAR") return TRAM_ICON;
+  return TRAIN_ICON;
+}
+
+// A stop in the details: the time (planned struck through when different), its name with the town spelled
+// out ("Köln Dasselstr./Süd Bf"), and the platform (a changed one marked).
+function legStop(ms: number, schedMs: number, s: LegStop): HTMLElement {
   const row = el("div", "journey-stop");
   row.append(clock(ms, schedMs), el("span", "journey-stop-dot"));
-  const label = el("span", "journey-stop-name", shortName(name));
-  if (platform) label.append(el("small", "", ` ${platform}`));
+  const label = el("span", "journey-stop-name", townName(s.name));
+  if (s.platform) {
+    const text = s.plannedPlatform ? t().platformChanged(s.platform, s.plannedPlatform) : s.platform;
+    label.append(el("small", s.plannedPlatform ? "platform-change" : "", ` ${text}`));
+  }
   row.append(label);
   return row;
 }
 
+// A journey searched from a stop that leaves from another one without a walk shown in between (Transitous
+// counts close stops with similar names as the same place: "Bonn Hbf" may mean the buses at Colmantstr.):
+// that stop's name with its platform, so it is not missed. Null when it leaves where it was asked to.
+function otherStop(j: Journey, search: SubmittedSearch | null): string | null {
+  const first = j.legs[0];
+  if (!search || search.ends.from.kind !== "stop" || first?.kind !== "ride") return null;
+  const name = shortName(first.from.name);
+  if (name === search.ends.from.name) return null;
+  return [name, first.from.platform].filter(Boolean).join(" · ");
+}
+
+// The state of a whole journey in words, with its colour level.
+function stateText(s: JourneyState): { text: string; level: string } {
+  const delay = formatDelay(s.delaySec);
+  switch (s.kind) {
+    case "cancelled":
+      return { text: t().cancelled, level: "verylate" };
+    case "missed":
+      return { text: t().connectionAtRisk, level: "verylate" };
+    case "timetable":
+      return { text: t().timetableOnly, level: "unknown" };
+    case "partial":
+      return delay ? { text: t().partlyLiveDelay(delay), level: delayLevel(s.delaySec, true) } : { text: t().partlyLive, level: "unknown" };
+    default:
+      return delay ? { text: t().liveDelay(delay), level: delayLevel(s.delaySec, true) } : { text: t().onTimeShort, level: "ontime" };
+  }
+}
+
+function transferText(c: Transfer): string {
+  const spare = Math.floor(c.slackS / 60);
+  const walk = Math.ceil(c.walkS / 60);
+  if (c.level === "missed") return t().changeMissed(walk);
+  return c.level === "tight" ? t().changeTight(spare, walk) : t().changeTime(spare, walk);
+}
+
+function changeText(c: RideChange): string {
+  if (c.cancelled) return t().rideNowCancelled(c.line);
+  const fmt = (m: number) => (m ? formatDelay(m * 60) : t().onTimeShort);
+  return t().rideDelayChanged(c.line, fmt(c.afterMin), fmt(c.beforeMin));
+}
+
+function stepText(s: { kind: string; street: string; distanceM: number }): string {
+  const m = `${Math.max(1, Math.round(s.distanceM))} m`;
+  const x = t();
+  switch (s.kind) {
+    case "stairs":
+      return x.stepStairs;
+    case "elevator":
+      return x.stepElevator;
+    case "left":
+      return s.street ? x.stepLeftInto(s.street, m) : x.stepLeft(m);
+    case "right":
+      return s.street ? x.stepRightInto(s.street, m) : x.stepRight(m);
+    case "uturn":
+      return x.stepUturn(m);
+    default:
+      return s.street ? x.stepAlong(s.street, m) : x.stepStraight(m);
+  }
+}
+
 // One connection, as a button that opens its details: times (live, planned struck through when different),
-// duration, the chain of lines and walks, then where it starts, the changes and the live state of the first
-// ride. Inside a button only spans are allowed; the classes lay them out.
-function journeyOption(j: Journey, onOpen: () => void): HTMLElement {
+// duration, the chain of lines and walks, then where it starts, the changes and the state of the whole
+// journey (all its rides, not just the first). Inside a button only spans are allowed.
+function journeyOption(j: Journey, onOpen: () => void, nowMs: number, search: SubmittedSearch | null): HTMLElement {
   const li = el("li", "");
-  const btn = focusKey(
-    el("button", j.cancelled ? "route-option cancelled" : "route-option") as HTMLButtonElement,
-    optionKey(j),
-  );
+  const gone = departed(j, nowMs);
+  const classes = ["route-option", j.cancelled ? "cancelled" : "", gone ? "past" : ""].filter(Boolean).join(" ");
+  const btn = focusKey(el("button", classes) as HTMLButtonElement, optionKey(j));
   btn.type = "button";
   btn.addEventListener("click", onOpen);
   li.append(btn);
-  // Screen readers hear "21:46 bis 22:16, 30 min, RB26, 8 min Fußweg, 16, ab ...": the arrow and the "›"
-  // are hidden from them, a hidden word and commas take their place.
+  // Screen readers hear "21:46 bis 22:16, 30 min, Zug RB26, 8 min Fußweg, Stadtbahn 16, ab ...": the arrow and
+  // the "›" are hidden from them, a hidden word and commas take their place.
   const top = el("span", "route-times");
   top.append(clock(j.depMs, j.schedDepMs), ...arrow(), clock(j.arrMs, j.schedArrMs));
   top.append(srOnly(", "), el("span", "route-duration", durationText(journeyMinutes(j) * 60_000)));
@@ -841,20 +1523,25 @@ function journeyOption(j: Journey, onOpen: () => void): HTMLElement {
   chain.append(srOnly(", "));
   j.legs.forEach((leg, i) => {
     if (i > 0) chain.append(hidden(el("span", "route-sep", "›")), srOnly(", "));
-    chain.append(leg.kind === "walk" ? walkChip(leg.minutes) : lineBadge(leg));
+    chain.append(leg.kind === "walk" ? walkChip(leg.minutes) : rideChip(leg));
   });
   btn.append(chain);
 
   const ride = firstRide(j);
   const details: string[] = [];
-  if (ride) details.push(t().routeFromStop([shortName(ride.from.name), ride.from.platform].filter(Boolean).join(" · ")));
+  if (gone) details.push(t().departedAlready);
+  const other = otherStop(j, search);
+  if (other) details.push(t().fromNeighbourStop(other));
+  else if (ride) details.push(t().routeFromStop([shortName(ride.from.name), ride.from.platform].filter(Boolean).join(" · ")));
   details.push(j.transfers ? t().routeTransfers(j.transfers) : t().routeDirect);
   const info = el("span", "route-info");
   info.append(srOnly(", "), details.join(" · "));
-  if (ride) {
-    const state = delayState((ride.from.ms - ride.from.schedMs) / 1000, ride.realTime, j.cancelled);
-    info.append(" · ", el("span", `state ${state.level}`, state.text));
-  }
+  const state = journeyState(j);
+  const s = stateText(state);
+  info.append(" · ", el("span", `state ${s.level}`, s.text));
+  if (state.tight && state.kind !== "missed") info.append(" · ", el("span", "state late", t().tightChange));
+  const rides = j.legs.filter((l): l is RideLeg => l.kind === "ride");
+  if (rides.some((r) => collectNotices([r.alerts], nowMs).length)) info.append(" · ", el("span", "state late", t().noticeShort));
   btn.append(info);
   return li;
 }
@@ -878,7 +1565,6 @@ function walkOption(j: Journey, onOpen: () => void): HTMLElement {
   return li;
 }
 
-// When a submitted search leaves or arrives, for the folded summary: "jetzt", "ab 21:39", "an 26. Okt. 08:15".
 // "450 m", "1.2 km" ("1,2 km" in German).
 function distanceText(m: number): string {
   if (m < 1000) return `${Math.max(10, Math.round(m / 10) * 10)} m`;
@@ -887,10 +1573,10 @@ function distanceText(m: number): string {
 }
 
 // A submitted search's ends keep My location as null, so its name follows a language switch.
-const stopName = (p: Place): string | null => (isHere(p) ? null : shortName(p.name));
 const endName = (name: string | null): string => name ?? t().routeHere;
 const searchName = (s: SubmittedSearch): string => `${endName(s.from)} → ${endName(s.to)}`;
 
+// When a submitted search leaves or arrives, for the folded summary: "jetzt", "ab 21:39", "an 26. Okt. 08:15".
 function whenText(s: SubmittedSearch): string {
   if (s.isNow) return t().routeFoldNow;
   const ms = Date.parse(s.request.time);
@@ -917,17 +1603,6 @@ function srOnly(text: string): HTMLElement {
 function hidden(node: HTMLElement): HTMLElement {
   node.setAttribute("aria-hidden", "true");
   return node;
-}
-
-function clock(ms: number, schedMs: number): HTMLElement {
-  const span = el("span", "route-clock");
-  if (Math.abs(ms - schedMs) >= 60_000) {
-    const planned = el("s", "");
-    planned.append(el("span", "sr-only", `${t().routePlanned} `), formatClock(schedMs));
-    span.append(planned, " ");
-  }
-  span.append(el("b", "", formatClock(ms)));
-  return span;
 }
 
 function walkChip(minutes: number): HTMLElement {
@@ -983,3 +1658,9 @@ const SWAP_ICON =
   '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4"/></svg>';
 const WALK_ICON =
   '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M9 21l2-6 3 3v3M7 12l3-4 4 1 2 4M11 15l-1-4"/></svg>';
+const BUS_ICON =
+  '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="15" rx="3"/><path d="M4 11h16M8 21v-3M16 21v-3"/><circle cx="8" cy="14.5" r=".5"/><circle cx="16" cy="14.5" r=".5"/></svg>';
+const TRAM_ICON =
+  '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="6" width="14" height="13" rx="3"/><path d="M12 6V2M8 2h8M5 13h14M8 22l1-3M16 22l-1-3"/></svg>';
+const TRAIN_ICON =
+  '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12a2 2 0 0 1 2 2v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V5a2 2 0 0 1 2-2zM4 11h16M12 3v8M7 22l2-4M17 22l-2-4"/></svg>';

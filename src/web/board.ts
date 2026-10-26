@@ -6,31 +6,40 @@
 
 import type { FeatureCollection } from "geojson";
 import * as maplibregl from "maplibre-gl";
+import { collectNotices } from "./alerts";
 import { fetchDepartures, fetchStops, isStale } from "./api";
 import {
   type DepartureRow,
   badgeTextColor,
   delayState,
+  formatClock,
   formatCountdown,
+  lineKey,
   mergeRows,
   modeLabel,
   rowColor,
   toRows,
   upcoming,
 } from "./departures";
+import { linkTo, pushView } from "./nav";
 import {
   type PanelUser,
   ageLine,
+  button,
+  clock,
   el,
   focusKey,
   focusPanel,
+  noticeList,
   offsetClearOfPanel,
   openPanel,
   ownsPanel,
   renderPanel,
+  shareLink,
 } from "./panel";
 import { t, onLangChange } from "./i18n";
 import { setStationNames, shortName } from "./names";
+import { isStopSaved, onSavedChange, toggleStop } from "./saved";
 import { ageText, resetStatus, setStatus, setStatusNote } from "./status";
 import { startStopLines } from "./stoplines";
 import { type Station, groupStations, matchStation, nearestStations } from "./stops";
@@ -43,6 +52,11 @@ const STOPS_RETRY_MS = [5_000, 15_000, 60_000]; // then every 60 s, only while t
 const STALE_AFTER_S = 120;
 const ROWS_PER_STATION = 8;
 const ROWS_NEARBY = 12;
+const MAX_LATER_PAGES = 3; // "later departures" a few times; past that, the route search is the better tool
+const FILTER_MIN_LINES = 4; // fewer lines than this need no filter
+const MAX_NOTICES = 3;
+// Back on the same board within this time (from a trip card, say): keep what was fetched.
+const KEEP_RESULTS_MS = 10 * 60_000;
 
 // "My location": stations within ~6 minutes' walk; if none, the single nearest one up to 2 km away.
 const NEAR_RADIUS_M = 500;
@@ -59,8 +73,12 @@ interface Shown {
   distanceM: number | null;
 }
 
+// One station's departures: the first page (refreshed every minute) and any later pages asked for.
 interface Result {
   rows: DepartureRow[];
+  laterRows: DepartureRow[];
+  cursor: string | null; // the next page after everything loaded so far
+  pages: number; // later pages loaded
   fetchedAtMs: number | null;
   error: string | null;
 }
@@ -76,6 +94,8 @@ export interface StopRef {
 export interface Board {
   showStop(stop: StopRef): void;
   showStation(station: Station, zoomIn?: boolean): void;
+  showStationId(id: string): Promise<boolean>; // false: no such station (an old link)
+  showNear(): boolean; // the last "near you" board again; false if there is none
   stations(): Station[]; // empty until the stop list has arrived
   stationsReady: Promise<void>;
   stationsFailed(): boolean; // the last try to load the stop list failed (another one is on the way)
@@ -105,10 +125,17 @@ export function startBoard(
   let shown: Shown[] = [];
   let results = new Map<string, Result>();
   let showAll = false; // "Weitere Abfahrten": every fetched row, not just the first few
+  let filter = new Set<string>(); // lineKeys picked in the line filter; empty: all lines
+  let loadingLater = false;
   let generation = 0; // bumps whenever the board changes, so late answers are ignored
   let lastPollMs = 0;
   let hereMarker: maplibregl.Marker | null = null;
   let glowMarkers: maplibregl.Marker[] = [];
+  let lastNear: Shown[] | null = null; // the last "near you" list, for Back
+  // The last board and when it was left, so coming back (Back from a trip card) shows it at once.
+  let lastKey = "";
+  let leftAtMs = 0;
+  let lastTapped: string | null = null; // the row that opened a trip card, for focus on the way back
   const stopLines = startStopLines(map);
 
   map.on("load", () => {
@@ -131,6 +158,9 @@ export function startBoard(
   onLangChange(() => {
     if (hereMarker) hereMarker.getElement().title = t().youAreHere;
     if (ownsPanel(user) && (shown.length || message)) render();
+  });
+  onSavedChange(() => {
+    if (ownsPanel(user) && shown.length) render();
   });
 
   // One timer: tick the countdowns, and fetch again once the poll interval has passed.
@@ -175,61 +205,80 @@ export function startBoard(
   }
 
   // `zoomIn`: also zoom in far enough to see the stop (used by the search, where the map may be far off).
-  function showStation(station: Station, zoomIn = false): void {
+  // `push`: a new browser history entry (not when Back / Forward / a link brings the board back).
+  function showStation(station: Station, zoomIn = false, push = true): void {
+    if (push) pushView({ kind: "stop", id: station.id });
     open([{ station, distanceM: null }], () => shortName(station.name));
     const zoom = zoomIn ? Math.max(map.getZoom(), SEARCH_ZOOM) : map.getZoom();
     map.easeTo({ center: [station.lon, station.lat], zoom, offset: offsetClearOfPanel() });
   }
 
-  // `again`: the same stops once more (back from a trip card): keep the rows already fetched and the
-  // "more" choice, so the board shows at once and the row that was opened is still there to get focus.
-  function open(list: Shown[], heading: () => string, again = false): void {
+  // The same stops as last time, shortly after leaving them (Back from a trip card): keep the rows already
+  // fetched and the "more" choice, so the board shows at once and the row that was opened gets focus again.
+  function open(list: Shown[], heading: () => string): void {
+    const key = list.map((s) => s.station.id).join("|");
+    const again = key === lastKey && Date.now() - leftAtMs < KEEP_RESULTS_MS;
     openPanel(user);
     generation++;
     shown = list;
     title = heading;
     message = null;
+    lastKey = key;
+    loadingLater = false;
     if (!again) {
       results = new Map();
       showAll = false;
+      filter = new Set();
+      lastTapped = null;
     }
     stopLines.clear();
     highlight(list.map((s) => s.station));
     render();
+    if (again && lastTapped) {
+      const row = document.querySelector<HTMLElement>(`#board-body [data-focus="${CSS.escape(lastTapped)}"]`);
+      if (row) row.focus({ preventScroll: false });
+      else focusPanel();
+    }
     void refresh();
-  }
-
-  // The trip card's way back to this board, with focus on the row that opened it (`key`; if that trip has
-  // left the board meanwhile, on the board's title).
-  function backToBoard(key: string): TripRef["back"] {
-    const list = shown;
-    const heading = title;
-    return {
-      label: () => t().backToDepartures,
-      run: () => {
-        open(list, heading, true);
-        const only = list.length === 1 ? list[0]!.station : null;
-        if (only) map.easeTo({ center: [only.lon, only.lat], offset: offsetClearOfPanel() });
-        const row = document.querySelector<HTMLElement>(`#board-body [data-focus="${CSS.escape(key)}"]`);
-        if (row) row.focus();
-        else focusPanel();
-      },
-    };
   }
 
   // Shows the rest of the fetched departures (no extra request: the Worker already asks for that many).
   function moreButton(hidden: number): HTMLElement {
-    const btn = focusKey(
-      el("button", "link-button board-more", showAll ? t().fewerDepartures : t().moreDepartures(hidden)) as HTMLButtonElement,
-      "more",
-    );
-    btn.type = "button";
+    const btn = button("link-button board-more", showAll ? t().fewerDepartures : t().moreDepartures(hidden), "more");
     btn.setAttribute("aria-expanded", String(showAll));
     btn.addEventListener("click", () => {
       showAll = !showAll;
       render();
     });
     return btn;
+  }
+
+  // The next page of departures, for every shown station that has one.
+  async function loadLater(): Promise<void> {
+    if (loadingLater) return;
+    const gen = generation;
+    loadingLater = true;
+    showAll = true;
+    render();
+    await Promise.all(
+      shown.map(async ({ station }) => {
+        const r = results.get(station.id);
+        if (!r?.cursor || r.pages >= MAX_LATER_PAGES) return;
+        try {
+          const res = await fetchDepartures(station.stopIds[0]!, AbortSignal.timeout(FETCH_TIMEOUT_MS), r.cursor);
+          if (gen !== generation) return;
+          r.laterRows = mergeRows([r.laterRows, toRows(res.data.stopTimes)]);
+          r.cursor = res.data.nextPageCursor ?? null;
+          r.pages++;
+        } catch {
+          // The button stays; another tap tries again.
+        }
+      }),
+    );
+    if (gen !== generation) return;
+    loadingLater = false;
+    render();
+    document.querySelector<HTMLElement>('#board-body [data-focus="later"]')?.focus({ preventScroll: true });
   }
 
   // `busy`: the status line says "loading" while true; otherwise the message is the final answer.
@@ -250,6 +299,8 @@ export function startBoard(
     generation++;
     shown = [];
     message = null;
+    loadingLater = false;
+    leftAtMs = Date.now();
     stopLines.clear();
     highlight([]);
     resetStatus(); // the "you are here" dot stays until the next press or a reload
@@ -268,19 +319,26 @@ export function startBoard(
     lastPollMs = Date.now();
     await Promise.all(
       shown.map(async ({ station }) => {
+        const prev = results.get(station.id);
         try {
           const res = await fetchDepartures(station.stopIds[0]!, AbortSignal.timeout(FETCH_TIMEOUT_MS));
           if (gen !== generation) return;
           results.set(station.id, {
             rows: toRows(res.data.stopTimes),
+            // Later pages stay; the first page's cursor counts only until a later page has been loaded.
+            laterRows: prev?.laterRows ?? [],
+            cursor: prev?.pages ? prev.cursor : (res.data.nextPageCursor ?? null),
+            pages: prev?.pages ?? 0,
             fetchedAtMs: res.fetchedAtMs,
             error: isStale(res) ? "stale copy from the Worker" : null,
           });
         } catch (err) {
           if (gen !== generation) return;
-          const prev = results.get(station.id);
           results.set(station.id, {
             rows: prev?.rows ?? [],
+            laterRows: prev?.laterRows ?? [],
+            cursor: prev?.cursor ?? null,
+            pages: prev?.pages ?? 0,
             fetchedAtMs: prev?.fetchedAtMs ?? null,
             error: String(err),
           });
@@ -291,6 +349,7 @@ export function startBoard(
   }
 
   function nearMe(): void {
+    pushView({ kind: "near" });
     if (!window.isSecureContext || !("geolocation" in navigator)) {
       showMessage(nearYou, () => t().needsHttps);
       return;
@@ -320,6 +379,7 @@ export function startBoard(
           return;
         }
         showHere(lon, lat);
+        lastNear = near;
         open(near, nearYou);
       },
       (err) => {
@@ -341,6 +401,66 @@ export function startBoard(
     map.easeTo({ center: [lon, lat], zoom: Math.max(map.getZoom(), 16), offset: offsetClearOfPanel() });
   }
 
+  // "Route von hier", "Route hierher", save and share, for a single stop's board.
+  function stopActions(station: Station): HTMLElement {
+    const box = el("div", "board-route");
+    if (onRoute) {
+      for (const [end, text] of [
+        ["from", t().routeFromHere],
+        ["to", t().routeToHere],
+      ] as const) {
+        const btn = button("board-route-btn", text, `route-${end}`);
+        btn.addEventListener("click", () => onRoute(station, end));
+        box.append(btn);
+      }
+    }
+    const saved = isStopSaved(station.id);
+    const save = button("board-route-btn", saved ? `★ ${t().saved}` : t().save, "save");
+    save.setAttribute("aria-pressed", String(saved));
+    save.addEventListener("click", () => toggleStop({ id: station.id, name: shortName(station.name) }));
+    const share = button("board-route-btn", t().share, "share");
+    share.addEventListener("click", () => void shareLink(linkTo({ kind: "stop", id: station.id }), shortName(station.name)));
+    box.append(save, share);
+    return box;
+  }
+
+  // The line filter: one badge per line on the board; picked ones narrow the list.
+  function lineFilter(rows: DepartureRow[]): HTMLElement | null {
+    const lines = new Map<string, DepartureRow>();
+    for (const r of rows) if (!r.extra && !lines.has(lineKey(r))) lines.set(lineKey(r), r);
+    if (lines.size < FILTER_MIN_LINES) return null;
+    const box = el("div", filter.size ? "line-filter active" : "line-filter");
+    box.setAttribute("role", "group");
+    box.setAttribute("aria-label", t().filterLines);
+    const sorted = [...lines.entries()].sort(([, a], [, b]) =>
+      a.line.localeCompare(b.line, "de", { numeric: true }),
+    );
+    for (const [key, r] of sorted) {
+      const on = filter.has(key);
+      const chip = button("line line-chip", r.line, `filter-${key}`);
+      const color = rowColor(r);
+      chip.style.backgroundColor = color;
+      chip.style.color = badgeTextColor(color, r.textColor);
+      chip.setAttribute("aria-pressed", String(on));
+      chip.setAttribute("aria-label", `${modeLabel(r.mode, r.line) ?? ""} ${r.line}`.trim());
+      chip.addEventListener("click", () => {
+        if (filter.has(key)) filter.delete(key);
+        else filter.add(key);
+        render();
+      });
+      box.append(chip);
+    }
+    if (filter.size) {
+      const clear = button("link-button", t().filterClear, "filter-clear");
+      clear.addEventListener("click", () => {
+        filter = new Set();
+        render();
+      });
+      box.append(clear);
+    }
+    return box;
+  }
+
   function render(): void {
     const heading = title();
     if (message !== null) {
@@ -358,8 +478,8 @@ export function startBoard(
     if (nearby) {
       const names = shown.map((s) => `${shortName(s.station.name)} ${roundM(s.distanceM ?? 0)} m`).join(" · ");
       parts.push(el("p", "board-note", names));
-    } else if (onRoute && shown[0]) {
-      parts.push(routeButtons(shown[0].station, onRoute));
+    } else if (shown[0]) {
+      parts.push(stopActions(shown[0].station));
     }
 
     const got = shown.map((s) => results.get(s.station.id)).filter((r): r is Result => r !== undefined);
@@ -370,9 +490,19 @@ export function startBoard(
       return;
     }
 
+    const notices = collectNotices(
+      got.flatMap((r) => r.rows.map((row) => row.alerts)),
+      now,
+    );
+    const noticeBox = noticeList(notices, MAX_NOTICES);
+    if (noticeBox) parts.push(noticeBox);
+
     const limit = nearby ? ROWS_NEARBY : ROWS_PER_STATION;
-    const all = upcoming(mergeRows(got.map((r) => r.rows)), now, Infinity);
-    const rows = showAll ? all : all.slice(0, limit);
+    const all = upcoming(mergeRows(got.flatMap((r) => [r.rows, r.laterRows])), now, Infinity);
+    const filterBox = lineFilter(all);
+    if (filterBox) parts.push(filterBox);
+    const matching = filter.size ? all.filter((r) => filter.has(lineKey(r))) : all;
+    const rows = showAll ? matching : matching.slice(0, limit);
     const anyError = got.some((r) => r.error !== null);
     const sameStop = nearby ? null : (shown[0]?.station.name ?? null);
     // Faint lines only for the first rows: "more" must not start more background requests.
@@ -380,12 +510,31 @@ export function startBoard(
     if (rows.length) {
       const list = el("ul", "rows");
       for (const r of rows) {
-        list.append(renderRow(r, sameStop, now, (trip) => onTripTap({ ...trip, back: backToBoard(rowKey(r)) })));
+        list.append(
+          renderRow(r, sameStop, now, (trip) => {
+            lastTapped = rowKey(r);
+            onTripTap(trip);
+          }),
+        );
       }
       parts.push(list);
-      if (all.length > limit) parts.push(moreButton(all.length - limit));
     } else if (!anyError) {
-      parts.push(el("p", "board-note", t().noDepartures));
+      parts.push(el("p", "board-note", filter.size ? t().noDeparturesFiltered : t().noDepartures));
+    }
+    if (matching.length > limit) parts.push(moreButton(matching.length - limit));
+
+    // How far ahead the list goes, and a way to look further (when everything loaded is on screen).
+    const lastMs = all.length ? all[all.length - 1]!.depMs : null;
+    const canLater = got.some((r) => r.cursor && r.pages < MAX_LATER_PAGES);
+    if ((showAll || matching.length <= limit) && lastMs !== null) {
+      const horizon = el("p", "board-note board-horizon", t().loadedUntil(formatClock(lastMs)));
+      parts.push(horizon);
+      if (canLater) {
+        const later = button("link-button board-more", loadingLater ? t().loading : t().laterDepartures, "later");
+        later.disabled = loadingLater;
+        later.addEventListener("click", () => void loadLater());
+        parts.push(later);
+      }
     }
 
     // Data age, like the vehicle status line (the oldest answer counts). Never show old data as current.
@@ -411,6 +560,18 @@ export function startBoard(
       else showMessage(() => shortName(stop.name), () => t().noBoardForStop);
     },
     showStation,
+    async showStationId(id: string): Promise<boolean> {
+      await stationsReady;
+      const station = byId.get(id);
+      if (!station) return false;
+      showStation(station, true, false);
+      return true;
+    },
+    showNear(): boolean {
+      if (!lastNear) return false;
+      open(lastNear, nearYou);
+      return true;
+    },
     stations: () => stations,
     stationsReady,
     stationsFailed: () => stationsFailed,
@@ -448,19 +609,6 @@ function whenVisible(): Promise<void> {
 
 const roundM = (m: number) => Math.round(m / 10) * 10;
 
-function routeButtons(station: Station, onRoute: (station: Station, end: "from" | "to") => void): HTMLElement {
-  const box = el("div", "board-route");
-  for (const [end, text] of [
-    ["from", t().routeFromHere],
-    ["to", t().routeToHere],
-  ] as const) {
-    const btn = focusKey(el("button", "board-route-btn", text) as HTMLButtonElement, `route-${end}`);
-    btn.type = "button";
-    btn.addEventListener("click", () => onRoute(station, end));
-    box.append(btn);
-  }
-  return box;
-}
 const nearYou = () => t().nearYou;
 const rowKey = (r: DepartureRow) => `${r.tripId}|${r.stopName}`;
 
@@ -485,19 +633,27 @@ function renderRow(
   // Destination, then what it is and where: "Stadtbahn · Colmantstr./Hbf", "Zug · Gleis 2".
   const dest = el("span", "dest");
   dest.append(el("span", "dest-name", shortName(r.headsign)));
-  const details: string[] = [];
+  const details = el("small", "");
+  const parts: (string | HTMLElement)[] = [];
   const kind = modeLabel(r.mode, r.line);
-  if (kind) details.push(kind);
-  if (r.platform) details.push(r.platform);
-  if (r.stopName !== sameStop) details.push(shortName(r.stopName)); // e.g. the neighbouring "Colmantstr./Hbf"
-  if (r.extra) details.push(t().extraTrip);
-  if (details.length) dest.append(el("small", "", details.join(" · ")));
+  if (kind) parts.push(kind);
+  if (r.platform) {
+    parts.push(r.plannedPlatform ? el("span", "platform-change", t().platformChanged(r.platform, r.plannedPlatform)) : r.platform);
+  }
+  if (r.stopName !== sameStop) parts.push(shortName(r.stopName)); // e.g. the neighbouring "Colmantstr./Hbf"
+  if (r.extra) parts.push(t().extraTrip);
+  if (r.alerts.length) parts.push(el("span", "row-notice", t().noticeShort));
+  parts.forEach((p, i) => details.append(...(i ? [" · ", p] : [p])));
+  if (parts.length) dest.append(details);
 
-  // Countdown, and under it the live state: "+3 live", "pünktlich", "nur Fahrplan", "fällt aus".
+  // Countdown, and under it the clock time (planned struck through when it moved) and the live state:
+  // "21:07 21:25 · +18 live", "21:25 · pünktlich", "nur Fahrplan", "fällt aus".
   const when = el("span", "when");
   when.append(el("b", "", formatCountdown(r.depMs, nowMs))); // struck through when cancelled (style.css)
   const state = delayState(r.delaySec, r.realTime, r.cancelled);
-  when.append(el("small", `state ${state.level}`, state.text));
+  const line = el("small", "when-line");
+  line.append(clock(r.depMs, r.schedMs), " · ", el("span", `state ${state.level}`, state.text));
+  when.append(line);
 
   row.append(badge, dest, when);
 
