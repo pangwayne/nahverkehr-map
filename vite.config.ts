@@ -9,7 +9,8 @@ export default defineConfig({
   worker: { format: "es" },
   // Serve MapLibre unbundled in dev so it finds its worker file next to itself (see src/web/map.ts).
   optimizeDeps: { exclude: ["maplibre-gl"] },
-  // The map plus the two privacy pages. Cloudflare serves them without ".html" (/privacy).
+  // The map, the two privacy pages and the page for unknown addresses. Cloudflare serves them without ".html"
+  // (/privacy).
   // Set on the client only: a top-level `input` would also replace the Worker's entry.
   environments: {
     client: {
@@ -20,7 +21,7 @@ export default defineConfig({
         // with the code), served at /licenses.md.
         license: { fileName: "licenses.md" },
         rolldownOptions: {
-          input: ["index.html", "privacy.html", "de/datenschutzerklaerung.html"],
+          input: ["index.html", "privacy.html", "de/datenschutzerklaerung.html", "404.html"],
         },
       },
     },

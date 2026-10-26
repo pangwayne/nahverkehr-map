@@ -3,7 +3,7 @@
 // Pure functions only (no DOM, no fetch), so everything here is unit tested.
 
 import type { Alert, Itinerary, Mode, TripStopPlace } from "./api";
-import { hexOrNull, lineName, tooEarly } from "./departures";
+import { collapsed, hexOrNull, lineName, tooEarly } from "./departures";
 import { type LonLat, decodePolyline } from "./geo";
 
 export interface RouteStop {
@@ -19,6 +19,11 @@ export interface RouteStop {
   schedDepMs: number | null;
   cancelled: boolean;
   alerts: Alert[]; // notices for this stop only
+  // false: the part of the trip arriving here / leaving from here has no live data (a through service can be
+  // live on one section and not on the next), or its live times looked wrong; its times are the timetable.
+  // Missing: as the whole trip (`TripRoute.realTime`).
+  arrLive?: boolean;
+  depLive?: boolean;
 }
 
 export interface TripRoute {
@@ -46,7 +51,8 @@ export interface TripProgress {
 
 const ms = (iso: string | undefined) => (iso ? Date.parse(iso) : null);
 
-function toStop(p: TripStopPlace): RouteStop {
+// One stop of a leg; `live`: the leg has live data.
+export function toStop(p: TripStopPlace, live = true): RouteStop {
   return {
     stopId: p.stopId ?? null,
     name: p.name,
@@ -60,6 +66,8 @@ function toStop(p: TripStopPlace): RouteStop {
     schedDepMs: ms(p.scheduledDeparture),
     cancelled: p.cancelled === true,
     alerts: p.alerts ?? [],
+    arrLive: live,
+    depLive: live,
   };
 }
 
@@ -77,12 +85,16 @@ export function tripRoute(itinerary: Itinerary): TripRoute | null {
   for (const leg of itinerary.legs) {
     const places = [leg.from, ...(leg.intermediateStops ?? []), leg.to];
     alerts.push(...(leg.alerts ?? []));
-    const legStops = places.map(toStop);
+    const legStops = places.map((p) => toStop(p, leg.realTime));
+    // Without live data a section runs to its timetable; times the feed moved anyway are not backed by
+    // anything. Per section: the trip's other sections may well be live.
+    if (!leg.realTime) legStops.forEach(useTimetable);
     const prev = stops[stops.length - 1];
     const start = legStops[0]!;
     if (prev && prev.name === start.name && prev.depMs === null) {
       prev.depMs = start.depMs;
       prev.schedDepMs = start.schedDepMs;
+      prev.depLive = start.depLive;
       prev.alerts = [...prev.alerts, ...start.alerts];
       legStops.shift();
     }
@@ -118,7 +130,8 @@ const schedLeaveMs = (s: RouteStop) => s.schedDepMs ?? s.schedArrMs;
 
 // The first stop whose live times cannot be right, or null when they all look fine (Phase 4.8):
 // 1. backwards: earlier than a stop before it; 2. bunched: 3+ stops in a row at the same minute while
-// the timetable spreads them over more than 3 min; 3. too early: trams and buses only.
+// the timetable spreads them over more than 3 min; 3. too early: trams and buses only; 4. collapsed: from one
+// stop to the next in less than half the timetable time (departures.ts), counted from the earlier stop.
 // Cancelled stops are skipped (their times mean nothing).
 export function firstImplausible(stops: RouteStop[], mode: Mode): number | null {
   let bad = Infinity;
@@ -138,6 +151,15 @@ export function firstImplausible(stops: RouteStop[], mode: Mode): number | null 
     const leave = leaveMs(s);
     const sched = schedLeaveMs(s);
     if (leave !== null && sched !== null && tooEarly((leave - sched) / 1000, mode)) bad = Math.min(bad, i);
+
+    const before = prev >= 0 ? stops[prev]! : null;
+    const from = before ? leaveMs(before) : null;
+    const schedFrom = before ? schedLeaveMs(before) : null;
+    const to = reachMs(s);
+    const schedTo = s.schedArrMs ?? s.schedDepMs;
+    if (from !== null && schedFrom !== null && to !== null && schedTo !== null && collapsed(from, to, schedFrom, schedTo)) {
+      bad = Math.min(bad, prev);
+    }
 
     if (leave === null) {
       runStart = -1;
@@ -169,11 +191,20 @@ function useTimetableFrom(stops: RouteStop[], from: number): void {
   }
   for (let i = from; i < stops.length; i++) {
     const s = stops[i]!;
+    s.arrLive = false;
+    s.depLive = false;
     if (s.schedArrMs !== null) s.arrMs = Math.max(s.schedArrMs, floor);
     if (s.schedDepMs !== null) s.depMs = Math.max(s.schedDepMs, s.arrMs ?? floor, floor);
     const t = leaveMs(s);
     if (!s.cancelled && t !== null) floor = t;
   }
+}
+
+function useTimetable(s: RouteStop): void {
+  s.arrLive = false;
+  s.depLive = false;
+  if (s.schedArrMs !== null) s.arrMs = s.schedArrMs;
+  if (s.schedDepMs !== null) s.depMs = s.schedDepMs;
 }
 
 // When the vehicle leaves / reaches a stop (the first stop has no arrival, the last no departure).

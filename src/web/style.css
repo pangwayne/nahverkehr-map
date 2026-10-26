@@ -330,8 +330,10 @@ html[lang="en"] .flag-en {
   }
 }
 
-/* Phones: portrait only. Rows: portrait, title and buttons; then the status line; then the search. */
-@media (max-width: 640px) {
+/* Phones: portrait only. Rows: portrait, title and buttons; then the status line; then the search.
+   Same width as the panel's phone layout (NARROW_PX in panel.ts and map.ts): between 641 and 699 px the
+   one-row header did not fit and the page scrolled sideways. */
+@media (max-width: 699px) {
   .site-header {
     flex-wrap: wrap;
     gap: 8px 10px;
@@ -395,7 +397,7 @@ html[lang="en"] .flag-en {
 }
 
 /* Phones with the panel open: the status line repeats the panel's title, so it gives its room to the map. */
-@media (max-width: 640px) {
+@media (max-width: 699px) {
   body.panel-open #status {
     display: none;
   }
@@ -451,6 +453,108 @@ html[lang="en"] .flag-en {
   /* "Liste größer": most of the screen, the map still peeking out above. */
   #board.tall {
     max-height: 88%;
+  }
+
+  /* The title, the stop's buttons and the line filter take about 150 px before the first departure. */
+  #board .board-head {
+    padding: 10px 0 6px;
+  }
+}
+
+/* Short phones (320 x 568 and the like): half the map's height left no complete departure under the buttons.
+   The sheet starts larger (two departures at 320 x 568); the map keeps a strip of about 120 px above it for
+   the stop. The line filter sits closer to the rows. */
+@media (max-width: 699px) and (max-height: 760px) {
+  #board {
+    max-height: 70%;
+  }
+
+  #board .line-filter {
+    margin: 0 0 2px;
+    padding: 2px 0 4px;
+  }
+}
+
+/* The narrowest phones: a row's small line (vehicle, platform, the neighbouring stop) stays on one line, cut
+   with "..." (screen readers still get all of it), and the sheet's two buttons are a little smaller. With
+   these, two whole departures fit under the buttons at 320 x 568. */
+@media (max-width: 360px) {
+  .row .dest small {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  #board #board-close,
+  #board #board-grow {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+/* 320 x 568: two departures whose names take two lines each need a few more pixels. */
+@media (max-width: 360px) and (max-height: 600px) {
+  #board {
+    max-height: 72%;
+  }
+}
+
+/* Phones on their side (short screens): a bottom sheet would leave one departure, or none. The panel becomes
+   a card on the left that takes the map's full height, like on a desktop (panel.ts sees the shape and keeps
+   fitted things to its right). #map-wrap: wins over the phone sheet's own sizes. */
+@media (min-width: 700px) and (max-height: 500px), (orientation: landscape) and (max-height: 420px) {
+  #map-wrap #board {
+    left: 8px;
+    right: auto;
+    top: 6px;
+    bottom: 6px;
+    width: min(400px, 58%);
+    max-height: none;
+    border-radius: 16px;
+  }
+
+  #board #board-grow {
+    display: none;
+  }
+
+  #board .board-head {
+    padding: 8px 0 4px;
+  }
+
+  #board .line-filter {
+    margin: 0 0 2px;
+    padding: 2px 0 4px;
+  }
+}
+
+/* Small phones on their side (568 x 320): the header's two rows would take a third of the height. One row:
+   portrait, search, buttons; the title and status line give way (the panel names what is open). */
+@media (max-width: 699px) and (orientation: landscape) and (max-height: 420px) {
+  .site-header {
+    flex-wrap: nowrap;
+    padding: 6px 12px;
+  }
+
+  .app-title h1,
+  #status {
+    display: none;
+  }
+
+  .search {
+    order: 0;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  #search {
+    height: 38px;
+  }
+
+  /* Two lines of credits, not three (body: wins over the phone footer further down). */
+  body .site-footer {
+    column-gap: 8px;
+    font-size: 10px;
+    line-height: 22px;
   }
 }
 
@@ -1023,6 +1127,21 @@ html[lang="en"] .flag-en {
   flex-wrap: wrap;
   gap: 8px;
   margin: 0 0 6px;
+}
+
+/* Phones: one row that scrolls sideways (like the line filter), not two rows above the departures. */
+@media (max-width: 699px) {
+  .board-route {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 6px;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .board-route > * {
+    flex: none;
+  }
 }
 
 /* "12 weitere Abfahrten" under the board's rows. */
@@ -1917,4 +2036,29 @@ html[lang="en"] .flag-en {
 
 .route-detail-foot {
   flex-wrap: wrap;
+}
+
+/* Touch screens: MapLibre's zoom and compass buttons are 29 px and the line filter's chips 30 px, small for a
+   thumb. 40 px and 36 px (WCAG 2.5.8 asks 24 px; the platforms advise about 44 px). */
+@media (pointer: coarse) {
+  .maplibregl-ctrl-group button {
+    width: 40px;
+    height: 40px;
+  }
+
+  .line-chip {
+    height: 36px;
+    min-width: 44px;
+  }
+}
+
+/* "Live-Daten können von ... abweichen" under a board or a connection, with the link to the operator. */
+.data-note {
+  margin: 6px 0 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.data-note a {
+  color: inherit;
 }

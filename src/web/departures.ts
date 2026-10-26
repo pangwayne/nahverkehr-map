@@ -51,6 +51,27 @@ export function tooEarly(delaySec: number, mode: Mode): boolean {
   return EARLY_CHECK_MODES.has(mode) && delaySec < -TOO_EARLY_SEC;
 }
 
+// Without live data a trip runs to its timetable, yet the feed sometimes moves one anyway (seen: a tram 66
+// planned 14:47 put at 16:13, with all its later stops at that same minute). Such a time is backed by
+// nothing: a small move is shown as the timetable, a move this big drops the departure or connection.
+export const UNBACKED_SHIFT_SEC = 15 * 60;
+
+// True when a departure without live data was moved so far from its timetable that it is no departure at all.
+export function unbackedShift(delaySec: number, realTime: boolean): boolean {
+  return !realTime && Math.abs(delaySec) > UNBACKED_SHIFT_SEC;
+}
+
+// Live times that make a stretch take less than half its timetable time cannot be right (seen: 14 stops,
+// 25 min planned, in 0 min). Only checked when the timetable gives it this long; short hops round too much.
+// The route search, the trip card and a followed connection's refresh all use this, so a refresh cannot turn
+// times the search threw out back into live ones.
+const COLLAPSE_CHECK_MS = 4 * 60_000;
+
+export function collapsed(fromMs: number, toMs: number, schedFromMs: number, schedToMs: number): boolean {
+  const planned = schedToMs - schedFromMs;
+  return planned >= COLLAPSE_CHECK_MS && toMs - fromMs < planned / 2;
+}
+
 // Two shapes of rail platform IDs, one per transport association. Each rule only applies to its own shape.
 // VRS (Bonn, Köln): IDs end in ":7:<70 + platform>", e.g. "de:05314:66101:7:72" = Gleis 2. Checked against
 // DB's own platforms for ~160 trains at Bonn Hbf, Bad Godesberg and Köln Messe/Deutz (Gleis 1-10).
@@ -124,9 +145,11 @@ export function toRows(stopTimes: StopTime[]): DepartureRow[] {
 
     const liveMs = Date.parse(p.departure);
     const schedMs = p.scheduledDeparture ? Date.parse(p.scheduledDeparture) : liveMs;
-    // A live time that cannot be right is replaced by the timetable (shown as "timetable only").
+    if (unbackedShift((liveMs - schedMs) / 1000, st.realTime)) continue;
+    // A live time that cannot be right is replaced by the timetable (shown as "timetable only"), and so is
+    // a time the feed moved without live data.
     const implausible = st.realTime && tooEarly((liveMs - schedMs) / 1000, st.mode);
-    const depMs = implausible ? schedMs : liveMs;
+    const depMs = implausible || !st.realTime ? schedMs : liveMs;
     const key = `${st.tripId}|${p.stopId ?? p.name}|${depMs}`;
     if (seen.has(key)) continue;
     seen.add(key);

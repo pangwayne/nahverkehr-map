@@ -14,6 +14,8 @@ const de = {
   portraitLabel: "Pang Wayne Wee, zur Website",
   close: "Schließen",
   searchLabel: "Haltestelle oder Adresse suchen",
+  // Shorter than the label, so it is not cut off in the narrow field (320 px phones, tablets).
+  searchPlaceholder: "Haltestelle oder Adresse",
   searchLoading: "Haltestellen laden...",
   stopsFailed: "Haltestellen konnten nicht geladen werden. Neuer Versuch läuft...",
   searchNone: "Keine Haltestelle gefunden",
@@ -48,6 +50,8 @@ const de = {
   onTimeShort: "pünktlich",
   liveDelay: (d: string) => `${d} live`,
   everyMinute: "neu jede Minute",
+  dataNote:
+    "Live-Daten über Transitous. Sie können von der Anzeige vor Ort abweichen, und ohne Hinweis heißt nicht ohne Störung.",
   modeTram: "Straßenbahn",
   modeLightRail: "Stadtbahn",
   modeBus: "Bus",
@@ -264,6 +268,7 @@ const en: typeof de = {
   portraitLabel: "Pang Wayne Wee, to the website",
   close: "Close",
   searchLabel: "Search stops or addresses",
+  searchPlaceholder: "Stop or address",
   searchLoading: "Loading stops...",
   stopsFailed: "Couldn't load the stops. Retrying...",
   searchNone: "No stop found",
@@ -297,6 +302,7 @@ const en: typeof de = {
   onTimeShort: "on time",
   liveDelay: (d) => `${d} live`,
   everyMinute: "refreshes every minute",
+  dataNote: "Live data via Transitous. It can differ from the display at the stop, and no notice does not mean no disruption.",
   modeTram: "Tram",
   modeLightRail: "Light rail",
   modeBus: "Bus",

@@ -105,7 +105,8 @@ export function prepareRoute(tripId: string, route: TripRoute): PreparedTrip {
       arrMs,
       schedDepMs: a.schedDepMs ?? a.schedArrMs ?? depMs,
       schedArrMs: b.schedArrMs ?? b.schedDepMs ?? arrMs,
-      realTime: route.realTime && !timetable.has(b),
+      // A section of the trip without live data (trip.ts: arrLive) is drawn like "timetable only" too.
+      realTime: route.realTime && !timetable.has(b) && b.arrLive !== false,
       fromName: a.name,
       toName: b.name,
       points,

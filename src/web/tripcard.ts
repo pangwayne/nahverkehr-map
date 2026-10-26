@@ -390,9 +390,12 @@ function renderStop(
   return li;
 }
 
-// Stop `i` shows timetable times because the live ones looked wrong (Phase 4.8).
+// Stop `i` shows timetable times because the live ones looked wrong (Phase 4.8), or because its section of
+// the trip has no live data (trip.ts: a through service can be live on one section only).
 function onTimetable(route: TripRoute, i: number): boolean {
-  return route.implausibleFrom !== null && i >= route.implausibleFrom;
+  const s = route.stops[i];
+  const live = s ? (s.depMs !== null ? s.depLive : s.arrLive) : undefined;
+  return live === false || (route.implausibleFrom !== null && i >= route.implausibleFrom);
 }
 
 function fitRoute(map: maplibregl.Map, route: TripRoute): void {

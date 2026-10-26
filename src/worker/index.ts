@@ -335,11 +335,24 @@ function forClient(
   const fetchedAt = res.headers.get("X-Fetched-At");
   const etag = ifNoneMatch !== undefined && fetchedAt ? `"${fetchedAt}"` : null;
   const headers = { "Cache-Control": `public, max-age=${maxAgeS}`, "X-Cache": cacheState };
-  if (etag && ifNoneMatch === etag) {
+  if (etag && etagMatches(ifNoneMatch, etag)) {
     return new Response(null, { status: 304, headers: { ...headers, ETag: etag, "X-Fetched-At": fetchedAt! } });
   }
   const out = new Response(res.body, res);
   for (const [name, value] of Object.entries(headers)) out.headers.set(name, value);
+  // The cache adds how long it has held the copy. Passed on, a browser counts that against max-age: a copy
+  // held longer than max-age arrived already stale, and every visit asked again.
+  out.headers.delete("Age");
   if (etag) out.headers.set("ETag", etag);
   return out;
+}
+
+// Whether an If-None-Match header names `etag`. Cloudflare compresses the answer and then hands out the ETag
+// as weak (W/"..."), so browsers send it back that way; the header may also be a list, or "*".
+export function etagMatches(header: string | null | undefined, etag: string): boolean {
+  if (!header) return false;
+  return header.split(",").some((part) => {
+    const tag = part.trim().replace(/^W\//, "");
+    return tag === "*" || tag === etag;
+  });
 }

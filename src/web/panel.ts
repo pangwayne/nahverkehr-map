@@ -10,9 +10,6 @@ export interface PanelUser {
   onClose(): void; // stop polling, clear map highlights
 }
 
-// Below this width the panel covers the bottom of the map, so tapped things are moved up into view.
-const NARROW_PX = 700;
-
 const panelEl = document.querySelector<HTMLElement>("#board")!;
 const titleEl = document.querySelector<HTMLElement>("#board-title")!;
 const bodyEl = document.querySelector<HTMLElement>("#board-body")!;
@@ -138,10 +135,33 @@ export function closePanel(user?: PanelUser): void {
   previous?.onClose();
 }
 
-// Map offset that keeps a point clear of the panel: above it on phones, to its right on wide screens.
+// Phones: back from "tall" to the normal sheet, so the map gets room. True when it was tall.
+export function shrinkPanel(): boolean {
+  if (!panelEl.classList.contains("tall")) return false;
+  setTall(false);
+  return true;
+}
+
+// The panel as a sheet across the bottom (phones upright), or a card on the left (wide screens, and phones on
+// their side: style.css). Told apart by its shape, so it follows whatever the stylesheet does.
+function isSheet(): boolean {
+  const wrap = panelEl.parentElement;
+  return wrap !== null && panelEl.offsetWidth >= wrap.clientWidth - 1;
+}
+
+// How much of the map (its box on screen) the panel covers: from the bottom for the sheet, from the left for
+// the card.
+export function panelCover(map: DOMRect): { bottom: number; left: number } {
+  if (panelEl.hidden) return { bottom: 0, left: 0 };
+  const p = panelEl.getBoundingClientRect();
+  if (isSheet()) return { bottom: Math.max(0, map.bottom - p.top), left: 0 };
+  return { bottom: 0, left: Math.max(0, p.right - map.left) };
+}
+
+// Map offset that keeps a point clear of the panel: above the sheet, to the right of the card.
 export function offsetClearOfPanel(): [number, number] {
   if (panelEl.hidden) return [0, 0];
-  return window.innerWidth < NARROW_PX ? [0, -panelEl.offsetHeight / 2] : [panelEl.offsetWidth / 2, 0];
+  return isSheet() ? [0, -panelEl.offsetHeight / 2] : [panelEl.offsetWidth / 2, 0];
 }
 
 // A finger is not a pixel: a tap this close to a thin line or a dot still counts as on it.

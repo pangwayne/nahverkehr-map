@@ -366,6 +366,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       list.append(legItem(j, leg, i, changes));
     });
     nodes.push(list);
+    if (followed) nodes.push(el("p", "data-note", t().dataNote));
 
     const foot = el("div", "route-foot route-detail-foot");
     foot.append(el("span", "route-age"));

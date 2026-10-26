@@ -569,6 +569,7 @@ export function startBoard(
       const text = anyError ? ageText(ageS, old, true) : `${ageText(ageS, old)} · ${t().everyMinute}`;
       parts.push(ageLine(text, old || anyError));
     }
+    parts.push(el("p", "data-note", t().dataNote));
     renderPanel(user, heading, parts);
   }
 

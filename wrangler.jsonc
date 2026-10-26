@@ -10,10 +10,10 @@
   "preview_urls": false,
   // The pages (/, /privacy, ...) and /api/* go through the Worker: it adds the security headers, with a
   // fresh nonce per page for Cloudflare's injected bot-check script. The built JS/CSS under /assets/ are
-  // served directly and for free. Unknown addresses get a plain 404.
+  // served directly and for free. Unknown addresses get 404.html, with status 404.
   "assets": {
     "binding": "ASSETS",
-    "not_found_handling": "none",
+    "not_found_handling": "404-page",
     "run_worker_first": ["/*", "!/assets/*"]
   },
   // Requests per visitor (IP) and minute that need Transitous (cache misses only). See src/worker/index.ts.

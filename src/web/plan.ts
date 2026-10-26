@@ -4,10 +4,10 @@
 
 import type { Alert, Mode, PlanItinerary, PlanLeg, PlanRequest, PlanResponse, Step, TripStopPlace } from "./api";
 import { planTime } from "./berlintime";
-import { hexOrNull, isHiddenMode, lineName, platformLabel, plannedPlatform, tooEarly } from "./departures";
+import { collapsed, hexOrNull, isHiddenMode, lineName, platformLabel, plannedPlatform, unbackedShift } from "./departures";
 import type { EndRef } from "./endpoints";
 import { type LonLat, decodePolyline } from "./geo";
-import { type RouteStop, type TripRoute, leaveMs, reachMs } from "./trip";
+import { type RouteStop, type TripRoute, firstImplausible, leaveMs, reachMs, toStop } from "./trip";
 import { PLAN_PAST_MS } from "../worker/transitous";
 
 export interface LegStop {
@@ -138,7 +138,29 @@ export function compactSteps(steps: Step[]): WalkStep[] {
   return out;
 }
 
-function toLeg(leg: PlanLeg, previous: JourneyLeg | undefined): JourneyLeg {
+// What to make of a ride's times: keep them, use the timetable instead (`timetable`), or drop the whole
+// connection (`drop`: moved far from the timetable without live data, see unbackedShift).
+type RideCheck = "keep" | "timetable" | "drop";
+
+// Live times are checked with the trip card's rules (trip.ts firstImplausible: backwards, bunched, too early,
+// collapsed) on the ride's own stops, and the whole ride must not take less than half its timetable time.
+// A followed connection's refresh (updateRide) applies the same, so a refresh cannot undo this.
+function checkRide(leg: PlanLeg, from: LegStop, to: LegStop): RideCheck {
+  const fromSec = (from.ms - from.schedMs) / 1000;
+  const toSec = (to.ms - to.schedMs) / 1000;
+  if (unbackedShift(fromSec, leg.realTime) || unbackedShift(toSec, leg.realTime)) return "drop";
+  if (!leg.realTime) return fromSec !== 0 || toSec !== 0 ? "timetable" : "keep";
+  if (collapsed(from.ms, to.ms, from.schedMs, to.schedMs)) return "timetable";
+  const stops = [leg.from, ...(leg.intermediateStops ?? []), leg.to].map((p) => toStop(p));
+  // The ride's ends count only as boarding and alighting (the search leaves out the other time).
+  stops[0]!.arrMs = stops[0]!.schedArrMs = null;
+  stops[stops.length - 1]!.depMs = stops[stops.length - 1]!.schedDepMs = null;
+  return firstImplausible(stops, leg.mode) === null ? "keep" : "timetable";
+}
+
+// A leg for the panel, and whether a ride's times were swapped for the timetable; null when the connection
+// cannot be offered at all.
+function toLeg(leg: PlanLeg, previous: JourneyLeg | undefined): { leg: JourneyLeg; corrected: boolean } | null {
   const from = legStop(leg.from, leg.mode, "dep", leg.startTime, leg.scheduledStartTime);
   const to = legStop(leg.to, leg.mode, "arr", leg.endTime, leg.scheduledEndTime);
   const decoded = decodePolyline(leg.legGeometry.points, leg.legGeometry.precision);
@@ -147,7 +169,7 @@ function toLeg(leg: PlanLeg, previous: JourneyLeg | undefined): JourneyLeg {
   const schematic = decoded.length < 2;
   const path: LonLat[] = schematic ? [[from.lon, from.lat], [to.lon, to.lat]] : decoded;
   if (leg.mode === "WALK") {
-    return {
+    const walk: WalkLeg = {
       kind: "walk",
       from,
       to,
@@ -157,15 +179,19 @@ function toLeg(leg: PlanLeg, previous: JourneyLeg | undefined): JourneyLeg {
       schematic,
       path,
     };
+    return { leg: walk, corrected: false };
   }
-  // Live times far too early are broken data (same rule as the board): use the timetable instead.
+  // Times that cannot be right (far too early, a ride that takes no time, moved without live data) are
+  // replaced by the timetable, the same rules as the board and the trip card.
+  const check = checkRide(leg, from, to);
+  if (check === "drop") return null;
   let realTime = leg.realTime;
-  if (realTime && tooEarly((from.ms - from.schedMs) / 1000, leg.mode)) {
+  if (check === "timetable") {
     realTime = false;
     from.ms = from.schedMs;
     to.ms = to.schedMs;
   }
-  return {
+  const ride: RideLeg = {
     kind: "ride",
     mode: leg.mode,
     line: lineName(leg.displayName, leg.routeShortName) ?? "?",
@@ -183,6 +209,7 @@ function toLeg(leg: PlanLeg, previous: JourneyLeg | undefined): JourneyLeg {
     transferWalkS: null, // filled in by toJourney, which sees the walks around it
     alerts: [...(leg.alerts ?? []), ...from.alerts, ...to.alerts],
   };
+  return { leg: ride, corrected: check === "timetable" };
 }
 
 const isRide = (leg: PlanLeg | undefined): boolean => leg !== undefined && leg.mode !== "WALK";
@@ -211,11 +238,18 @@ export function toJourney(it: PlanItinerary): Journey | null {
   if (it.legs.some((l) => isHiddenMode(l.mode))) return null;
   const legs: JourneyLeg[] = [];
   const all: JourneyLeg[] = []; // `legs` plus the tiny walks left out, for retime
-  let corrected = false; // a ride's live times were thrown out for the timetable (toLeg)
+  let corrected = false; // a ride's times were swapped for the timetable (toLeg)
+  let dropped = false; // a ride cannot be offered at all (toLeg)
   let walkS: number | null = null; // walking since the last ride; null before the first ride
   it.legs.forEach((raw, i) => {
-    const leg = toLeg(raw, legs[legs.length - 1]);
-    if (leg.kind === "ride" && raw.realTime && !leg.realTime) corrected = true;
+    if (dropped) return;
+    const made = toLeg(raw, legs[legs.length - 1]);
+    if (!made) {
+      dropped = true;
+      return;
+    }
+    const leg = made.leg;
+    if (made.corrected) corrected = true;
     if (leg.kind === "walk") {
       if (walkS !== null) walkS += leg.seconds;
     } else {
@@ -229,7 +263,7 @@ export function toJourney(it: PlanItinerary): Journey | null {
     if (leg.kind === "walk" && raw.duration < SHORT_WALK_S && betweenRides) return;
     legs.push(leg);
   });
-  if (corrected && !retime(all)) return null;
+  if (dropped || (corrected && !retime(all))) return null;
   const first = legs[0];
   const last = legs[legs.length - 1];
   if (!first || !last) return null;
@@ -407,23 +441,28 @@ export function updateRide(leg: RideLeg, route: TripRoute): RideLeg | null {
   if (a < 0 || b < 0) return null;
   const board = route.stops[a]!;
   const alight = route.stops[b]!;
-  const depMs = leaveMs(board);
-  const arrMs = reachMs(alight);
+  let depMs = leaveMs(board);
+  let arrMs = reachMs(alight);
   if (depMs === null || arrMs === null) return null;
-  const onTimetable = route.implausibleFrom !== null && route.implausibleFrom <= a;
-  const from: LegStop = {
-    ...freshStop(leg.from, board, leg.mode),
-    ms: depMs,
-    schedMs: board.schedDepMs ?? board.schedArrMs ?? leg.from.schedMs,
-  };
-  const to: LegStop = {
-    ...freshStop(leg.to, alight, leg.mode),
-    ms: arrMs,
-    schedMs: alight.schedArrMs ?? alight.schedDepMs ?? leg.to.schedMs,
-  };
+  const schedDep = board.schedDepMs ?? board.schedArrMs ?? leg.from.schedMs;
+  const schedArr = alight.schedArrMs ?? alight.schedDepMs ?? leg.to.schedMs;
+  // The same rules as the search (checkRide): live only where this section of the trip has live data and its
+  // times look right. Times thrown out within the ride give the ride's timetable, as in the search; thrown out
+  // before boarding, the trip's corrected times (a late vehicle cannot catch up with its timetable).
+  const sectionLive = route.realTime && board.depLive !== false && alight.arrLive !== false;
+  const wrongBefore = route.implausibleFrom !== null && route.implausibleFrom <= a;
+  const wrongWithin =
+    (route.implausibleFrom !== null && route.implausibleFrom <= b) || collapsed(depMs, arrMs, schedDep, schedArr);
+  const realTime = sectionLive && !wrongWithin;
+  if (!realTime && !wrongBefore) {
+    depMs = schedDep;
+    arrMs = schedArr;
+  }
+  const from: LegStop = { ...freshStop(leg.from, board, leg.mode), ms: depMs, schedMs: schedDep };
+  const to: LegStop = { ...freshStop(leg.to, alight, leg.mode), ms: arrMs, schedMs: schedArr };
   return {
     ...leg,
-    realTime: route.realTime && !onTimetable,
+    realTime,
     cancelled: route.cancelled || board.cancelled || alight.cancelled,
     from,
     to,
