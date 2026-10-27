@@ -148,6 +148,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
   let controller: AbortController | null = null;
   let timeNote: string | null = null; // "this time happens twice" and the like
   let fieldError: string | null = null;
+  let shownEdited = false; // the connections on screen are marked as the previous search's (formEdited)
   let locateSeq = 0; // number of the latest location lookup; an older one's answer is ignored
   let locating: { place: Place | null; text: string } | null = null; // a lookup is pending: From as it was
   let prefs: TravelPrefs = loadPrefs();
@@ -332,7 +333,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     nodes.push(back);
 
     const summary = el("p", "route-summary");
-    summary.append(clock(j.depMs, j.schedDepMs), " ", ...arrow(), " ", clock(j.arrMs, j.schedArrMs));
+    summary.append(depClock(j), " ", ...arrow(), " ", arrClock(j));
     const facts = [durationText(journeyMinutes(j) * 60_000), j.transfers ? t().routeTransfers(j.transfers) : t().routeDirect];
     summary.append(` · ${facts.join(" · ")}`);
     nodes.push(summary);
@@ -511,6 +512,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       setField(fromState, toState.place, toState.input.value);
       setField(toState, a, aText);
       renderHere();
+      checkEdited();
     });
     to.row.append(swap);
 
@@ -565,7 +567,11 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     submit.type = "submit";
     form.append(from.wrap, to.wrap, hereNote, when, options.box, error, submit);
     // Typing, picking a time or a setting: the user's own edits win over a link still being filled in.
-    form.addEventListener("input", () => restoreSeq++);
+    // An edit that is not searched yet marks the connections below as the previous search's.
+    form.addEventListener("input", () => {
+      restoreSeq++;
+      checkEdited();
+    });
     form.addEventListener("submit", (e) => {
       e.preventDefault();
       restoreSeq++;
@@ -1049,7 +1055,30 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     b.fold.replaceChildren(text, el("span", "route-fold-action", hide ? t().routeEdit : t().routeFoldHide));
   }
 
+  // Whether the form holds edits not searched yet: then the connections on screen answer the previous search.
+  function formEdited(): boolean {
+    if (!built || !lastSearch || outcome.kind !== "plan") return false;
+    const b = built;
+    const s = lastSearch.request;
+    const sent = (p: Place | null) => (p ? placeParam(p) : null);
+    if (sent(b.from.place) !== s.from || sent(b.to.place) !== s.to) return true;
+    if (b.arrive.input.checked !== s.arriveBy || b.isNow !== lastSearch.isNow) return true;
+    if (!b.isNow) {
+      const picked = fromBerlin(b.date.value, b.time.value);
+      if (!picked || planTime(picked.ms) !== s.time) return true;
+    }
+    const sorted = (q: Record<string, string>) => JSON.stringify(Object.entries(q).sort());
+    return sorted(prefsQuery(prefs)) !== sorted(s.prefs ?? {});
+  }
+
+  // Redraw once the form starts or stops differing from the search on screen (not on every key).
+  function checkEdited(): void {
+    if (formEdited() !== shownEdited) render();
+  }
+
   function resultNodes(): HTMLElement[] {
+    shownEdited = formEdited();
+    built!.body.classList.toggle("route-previous", shownEdited);
     if (outcome.kind === "none") return savedRoutesNodes();
     if (outcome.kind === "searching") return [el("p", "board-note", t().routeSearching)];
     if (outcome.kind === "failed") {
@@ -1061,6 +1090,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     const heading = el("h3", "route-heading", t().routeResults);
     heading.tabIndex = -1;
     const nodes: HTMLElement[] = [heading];
+    if (shownEdited) nodes.push(el("p", "board-note route-previous-note", t().routePrevious(searchName(lastSearch!))));
 
     if (pinned) {
       const followedOne = pinned;
@@ -1191,30 +1221,44 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
   }
 
   // Fill the form from route ends (a saved route, a link). Stops are looked up in the stop list; My location
-  // is asked for again. Returns false when an end cannot be used (an unknown stop), null when something newer
-  // happened while the stop list was loading (see restoreSeq): then nothing is filled in.
-  async function fillEnds(ends: { from: EndRef | null; to: EndRef | null }): Promise<boolean | null> {
+  // is asked for again. `gone`: the first field whose stop cannot be used (unknown now), still showing its
+  // name so it is clear which one. Null when something newer happened while the stop list was loading (see
+  // restoreSeq): then nothing is filled in.
+  async function fillEnds(ends: { from: EndRef | null; to: EndRef | null }): Promise<{ gone: Field | null } | null> {
     const mine = ++restoreSeq;
     await board.stationsReady;
     if (mine !== restoreSeq || !ownsPanel(user)) return null;
     const b = built!;
-    let ok = true;
-    const toPlace = (e: EndRef | null): Place | null => {
-      if (!e || e.kind === "here") return null;
-      if (e.kind === "spot") return e;
-      const station = findStation(board.stations(), e.id);
-      if (!station) ok = false;
-      return station;
-    };
+    let gone: Field | null = null;
     cancelLocate(false);
     for (const [field, end] of [
       [b.from, ends.from],
       [b.to, ends.to],
     ] as const) {
-      const place = toPlace(end);
-      setField(field, place, place ? (isSpot(place) ? place.name : shortName((place as Station).name)) : "");
+      if (!end || end.kind === "here") {
+        setField(field, null, "");
+      } else if (end.kind === "spot") {
+        setField(field, end, end.name);
+      } else {
+        const station = findStation(board.stations(), end.id);
+        setField(field, station, station ? shortName(station.name) : end.name);
+        if (!station) gone ??= field;
+      }
     }
-    return ok;
+    return { gone };
+  }
+
+  // The connections on screen belong to another search (a saved route or a link is being opened): away with
+  // them, and with a search still running, so neither the list nor the status line shows the old route.
+  function dropResults(): void {
+    const running = controller;
+    controller = null; // its answer, or its abort, is then ignored (search checks)
+    running?.abort();
+    outcome = { kind: "none" };
+    lastSearch = null;
+    found = false;
+    pinned = null;
+    follows = new Map();
   }
 
   // A saved route: fill in the form and search (with My location: find it first, then the user searches).
@@ -1222,10 +1266,11 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
     built ??= buildForm();
     openPanel(user);
     applyTexts();
+    dropResults();
     pushView({ kind: "route", route: { from: r.from, to: r.to, time: null, arriveBy: false, prefs: r.prefs } });
     void (async () => {
-      const ok = await fillEnds(r);
-      if (ok === null) return;
+      const filled = await fillEnds(r);
+      if (filled === null) return;
       setPrefs(prefsFromQuery(r.prefs), false);
       built!.isNow = true;
       built!.arrive.input.checked = false;
@@ -1234,8 +1279,8 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       folded = false;
       pinned = null;
       showList();
-      if (!ok) {
-        showFieldError(t().savedStopGone, built!.from.input);
+      if (filled.gone) {
+        showFieldError(t().savedStopGone, filled.gone.input);
         return;
       }
       if (r.from.kind === "here" || r.to.kind === "here") {
@@ -1260,10 +1305,11 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       else showList(detail ? optionKey(detail) : undefined);
       return;
     }
+    dropResults(); // they were for another search
     showList();
     void (async () => {
-      const ok = await fillEnds(view.route);
-      if (ok === null) return;
+      const filled = await fillEnds(view.route);
+      if (filled === null) return;
       setPrefs(prefsFromQuery(view.route.prefs), false);
       const b = built!;
       b.arrive.input.checked = view.route.arriveBy;
@@ -1282,8 +1328,8 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
       if (b.isNow) fillNow();
       folded = false;
       render();
-      if (!ok) {
-        showFieldError(t().savedStopGone, b.from.input);
+      if (filled.gone) {
+        showFieldError(t().linkStopGone, filled.gone.input);
         return;
       }
       if (!b.from.place || !b.to.place) {
@@ -1419,6 +1465,16 @@ function sameRoute(a: RouteRef, b: RouteRef): boolean {
     (a.page ?? null) === (b.page ?? null) &&
     JSON.stringify(Object.entries(a.prefs).sort()) === JSON.stringify(Object.entries(b.prefs).sort())
   );
+}
+
+// A journey's leaving and arriving times. Without live data there is nothing to cross out: the timetable is
+// all there is, so a planned time that differs (a walk moved behind a corrected ride) is not shown.
+function depClock(j: Journey): HTMLElement {
+  return clock(j.depMs, j.realTime ? j.schedDepMs : j.depMs);
+}
+
+function arrClock(j: Journey): HTMLElement {
+  return clock(j.arrMs, j.realTime ? j.schedArrMs : j.arrMs);
 }
 
 function rideColor(leg: RideLeg): string {
@@ -1558,7 +1614,7 @@ function journeyOption(j: Journey, onOpen: () => void, nowMs: number, search: Su
   // Screen readers hear "21:46 bis 22:16, 30 min, Zug RB26, 8 min Fußweg, Stadtbahn 16, ab ...": the arrow and
   // the "›" are hidden from them, a hidden word and commas take their place.
   const top = el("span", "route-times");
-  top.append(clock(j.depMs, j.schedDepMs), ...arrow(), clock(j.arrMs, j.schedArrMs));
+  top.append(depClock(j), ...arrow(), arrClock(j));
   top.append(srOnly(", "), el("span", "route-duration", durationText(journeyMinutes(j) * 60_000)));
   btn.append(top);
 

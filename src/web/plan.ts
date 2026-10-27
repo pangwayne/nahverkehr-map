@@ -218,6 +218,8 @@ const isRide = (leg: PlanLeg | undefined): boolean => leg !== undefined && leg.m
 // at least its own walking time (its clock times are whole minutes and can be shorter: 119 s shown as 1 min).
 // A ride that then leaves before the leg in front of it has ended cannot be caught: false, the journey no
 // longer works. The other rides keep their own times; only Transitous knows those.
+// A moved walk's planned times follow the planned end of the leg in front of it, so a journey on the
+// timetable shows no crossed-out time.
 // `legs` includes the short walks the panel leaves out: they take time too.
 function retime(legs: JourneyLeg[]): boolean {
   for (let i = 1; i < legs.length; i++) {
@@ -226,6 +228,8 @@ function retime(legs: JourneyLeg[]): boolean {
     if (leg.from.ms >= endMs) continue;
     if (leg.kind === "ride") return false;
     const spanMs = Math.max(leg.to.ms - leg.from.ms, leg.minutes * 60_000);
+    leg.from.schedMs = legs[i - 1]!.to.schedMs;
+    leg.to.schedMs = leg.from.schedMs + spanMs;
     leg.from.ms = endMs;
     leg.to.ms = endMs + spanMs;
   }

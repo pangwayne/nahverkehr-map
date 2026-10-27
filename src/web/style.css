@@ -1129,8 +1129,9 @@ html[lang="en"] .flag-en {
   margin: 0 0 6px;
 }
 
-/* Phones: one row that scrolls sideways (like the line filter), not two rows above the departures. */
-@media (max-width: 699px) {
+/* Phones, and short screens on their side: one row that scrolls sideways (like the line filter), not two
+   rows above the departures. */
+@media (max-width: 699px), (min-width: 700px) and (max-height: 500px), (orientation: landscape) and (max-height: 420px) {
   .board-route {
     flex-wrap: nowrap;
     overflow-x: auto;
@@ -1171,6 +1172,29 @@ html[lang="en"] .flag-en {
 .board-route-btn[aria-pressed="true"] {
   background: var(--hover);
   border-style: dashed;
+}
+
+/* Short screens on their side: smaller buttons, so all four fit in the one row and Share stays in sight. */
+@media (min-width: 700px) and (max-height: 500px), (orientation: landscape) and (max-height: 420px) {
+  .board-route-btn {
+    min-height: 30px;
+    padding: 3px 10px;
+    font-size: 12px;
+  }
+}
+
+/* The form was edited but not searched yet: the connections are the previous search's, faded and labeled. */
+.route-previous .route-options,
+.route-previous .route-pager {
+  opacity: 0.5;
+}
+
+.route-previous-note {
+  padding: 6px 10px;
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  background: var(--hover);
+  color: var(--ink);
 }
 
 /* Route panel: From / To with the stop search, when, and the search button. */
