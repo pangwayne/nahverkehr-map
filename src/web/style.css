@@ -2216,6 +2216,12 @@ body.panel-open #map-area .maplibregl-ctrl-bottom-right {
     display: block;
   }
 
+  /* The column takes its place from the first paint, still empty, before the script fills it. Otherwise, on a
+     slow first load, the whole map slid 340 px to the right when it appeared (Lighthouse desktop CLS 0.23). */
+  #live[hidden] {
+    display: block;
+  }
+
   /* No jump when the first numbers arrive (layout shift, CLS): the scrollbar's room is kept from the start,
      and the headline and the line under it keep their loaded height while loading. */
   #live {
