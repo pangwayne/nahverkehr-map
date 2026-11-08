@@ -34,7 +34,8 @@ function setPaused(on: boolean): void {
     note ??= buildNote();
     note.textContent = t().idlePaused;
     note.hidden = false;
-    requestAnimationFrame(() => note?.classList.add("show"));
+    void note.offsetWidth; // lay it out once while still transparent, so adding "show" fades it in
+    note.classList.add("show");
   } else {
     note?.classList.remove("show");
     if (note) note.hidden = true;
