@@ -311,6 +311,23 @@ export function failureKind(status: number | null): Failure {
   return status !== null && status >= 400 && status < 500 && status !== 408 && status !== 429 ? "notFound" : "outage";
 }
 
+// Only what looks like a whole JSON answer is kept and shared: not empty, not huge (the stop list, the biggest,
+// is about 4 MB), starting with { or [ and ending with } or ]. An HTML error page sent with status 200 or a cut-off
+// body is handled like an outage instead of being stored for everyone. No parsing, so it stays cheap.
+export const MAX_UPSTREAM_BYTES = 8 * 1024 * 1024;
+export function looksLikeJson(body: ArrayBuffer): boolean {
+  if (body.byteLength === 0 || body.byteLength > MAX_UPSTREAM_BYTES) return false;
+  const bytes = new Uint8Array(body);
+  const space = (b: number) => b === 0x20 || b === 0x09 || b === 0x0a || b === 0x0d;
+  let i = 0;
+  while (i < bytes.length && space(bytes[i]!)) i++;
+  let j = bytes.length - 1;
+  while (j > i && space(bytes[j]!)) j--;
+  const first = bytes[i];
+  const last = bytes[j];
+  return (first === 0x7b && last === 0x7d) || (first === 0x5b && last === 0x5d); // {...} or [...]
+}
+
 async function cachedProxy(ctx: ExecutionContext, allowed: () => Promise<boolean>, opts: ProxyOptions): Promise<Response> {
   const cache = caches.default;
   const bucketKey = new Request(opts.bucketKey);
@@ -344,6 +361,7 @@ async function cachedProxy(ctx: ExecutionContext, allowed: () => Promise<boolean
 
     // Buffer the bytes without parsing them (cheap), so we can store two copies and answer.
     const body = await upstream.arrayBuffer();
+    if (!looksLikeJson(body)) throw new Error(`Transitous answered ${body.byteLength} bytes that are not JSON`);
     const fetchedAt = new Date().toISOString();
     const stored = (maxAge: number) =>
       new Response(body, {
