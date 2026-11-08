@@ -5,6 +5,7 @@
 import { DELAY_COLORS, delayClass } from "./delayband";
 import type { FeatureCollection, Point } from "geojson";
 import type * as maplibregl from "maplibre-gl";
+import { isLive, onResume } from "./activity";
 import { collectNotices } from "./alerts";
 import { fetchTrip, isStale } from "./api";
 import type { StopRef } from "./board";
@@ -102,9 +103,12 @@ export function startTripCard(map: maplibregl.Map, onStopTap: (stop: StopRef) =>
 
   setInterval(() => {
     if (!tapped || !ownsPanel(user)) return;
-    if (document.visibilityState === "visible" && Date.now() - lastPollMs >= POLL_MS) void refresh();
+    if (isLive() && Date.now() - lastPollMs >= POLL_MS) void refresh();
     else update();
   }, TICK_MS);
+  onResume(() => {
+    if (tapped && ownsPanel(user) && Date.now() - lastPollMs >= POLL_MS) void refresh();
+  });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && tapped && Date.now() - lastPollMs >= POLL_MS) void refresh();
   });

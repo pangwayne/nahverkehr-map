@@ -9,6 +9,7 @@
 import type { Feature, FeatureCollection, LineString, Point } from "geojson";
 import type * as maplibregl from "maplibre-gl";
 import { CITY_WINDOW_MS, VEHICLES_WINDOW_MS } from "../worker/transitous";
+import { isLive, onResume } from "./activity";
 import { collectNotices } from "./alerts";
 import { badgeTextColor } from "./departures";
 import { type Mode, fetchCity, fetchTrip, fetchVehicles, isStale } from "./api";
@@ -157,6 +158,7 @@ export function startLiveMap(map: maplibregl.Map | null, onVehicleTap: (ref: Tri
   }
   setInterval(sync, CHECK_MS);
   setInterval(() => frame(false), FRAME_MS);
+  onResume(sync);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") sync();
   });
@@ -187,10 +189,10 @@ export function startLiveMap(map: maplibregl.Map | null, onVehicleTap: (ref: Tri
   }
 
   // A highlighted line needs (another) sample trip for its notices: take one of its vehicles in the city.
-  // Only while the page is visible (render() also runs from the timers of a hidden tab).
+  // Only while the page is live (visible and not idle; render() also runs from the timers of a hidden tab).
   function sampleNotices(inCityNow: VehiclePosition[]): void {
     if (!lineInfo || lineInfo.key !== highlight) return;
-    const plan = planSample(lineInfo, inCityNow, Date.now(), document.visibilityState === "visible");
+    const plan = planSample(lineInfo, inCityNow, Date.now(), isLive());
     lineInfo = plan.sample;
     const attempt = plan.fetch;
     if (!attempt) return;
@@ -213,7 +215,7 @@ export function startLiveMap(map: maplibregl.Map | null, onVehicleTap: (ref: Tri
   // lookups at a time, each trip once (a failed one again later, if the list still needs it), only while the page
   // is visible. The list redraws once a batch is in.
   function askDestinations(inCityNow: VehiclePosition[]): void {
-    if (document.visibilityState !== "visible") return;
+    if (!isLive()) return;
     if (destinations.size > DIRECTION_CACHE) {
       destinations.clear();
       failedLookups.clear();
@@ -263,7 +265,7 @@ export function startLiveMap(map: maplibregl.Map | null, onVehicleTap: (ref: Tri
       const wanted = tilesToFetch(v, map.getZoom(), MAX_TILES).tiles.filter((tile) => !coveredByCities(overlap(tileBox(tile), v)));
       data.setWanted(wanted.map(tileKey));
     }
-    data.sync(selected[0]!, document.visibilityState === "visible");
+    data.sync(selected[0]!, isLive());
     frame(true);
   }
 

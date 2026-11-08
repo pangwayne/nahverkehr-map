@@ -6,6 +6,7 @@
 
 import type { FeatureCollection } from "geojson";
 import * as maplibregl from "maplibre-gl";
+import { isLive, onResume } from "./activity";
 import { collectNotices } from "./alerts";
 import { fetchDepartures, fetchStops, isStale } from "./api";
 import {
@@ -176,9 +177,12 @@ export function startBoard(
   // One timer: tick the countdowns, and fetch again once the poll interval has passed.
   setInterval(() => {
     if (shown.length === 0 || !ownsPanel(user)) return;
-    if (document.visibilityState === "visible" && Date.now() - lastPollMs >= POLL_MS) void refresh();
+    if (isLive() && Date.now() - lastPollMs >= POLL_MS) void refresh();
     else render();
   }, TICK_MS);
+  onResume(() => {
+    if (shown.length && ownsPanel(user) && Date.now() - lastPollMs >= POLL_MS) void refresh();
+  });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && shown.length && Date.now() - lastPollMs >= POLL_MS) {
       void refresh();

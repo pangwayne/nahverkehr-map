@@ -8,6 +8,7 @@
 // the time and the travel settings, only with a search.
 
 import type * as maplibregl from "maplibre-gl";
+import { isLive } from "./activity";
 import { collectNotices } from "./alerts";
 import { type Mode, type PlanRequest, PlanError, fetchPlan, fetchTrip, isStale } from "./api";
 import { type Followed, dueForRefresh, follow, followEnded, refreshFollowed } from "./follow";
@@ -175,7 +176,7 @@ export function startRoute(board: Board, map: maplibregl.Map, openTrip: (ref: Tr
   setInterval(() => {
     if (!ownsPanel(user)) return;
     const now = Date.now();
-    if (detail && followed && document.visibilityState === "visible" && dueForRefresh(followed, now)) {
+    if (detail && followed && isLive(now) && dueForRefresh(followed, now)) {
       void refreshDetail();
     } else if (!detail && outcome.kind === "plan" && goneCount(outcome.plan, now) !== goneShown) {
       render(); // a connection has left meanwhile: it moves down to the ones already gone

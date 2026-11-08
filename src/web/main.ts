@@ -1,4 +1,5 @@
 import "@fontsource-variable/hanken-grotesk/wght.css";
+import { startIdleWatch } from "./activity";
 import { startBoard } from "./board";
 import { type View, parseLiveHash } from "./endpoints";
 import { type Lang, getLang, onLangChange, rememberLang, savedLang, t } from "./i18n";
@@ -68,6 +69,8 @@ function applyTexts(): void {
   if ((statusEl.dataset["freshness"] ?? "idle") === "idle") resetStatus();
 }
 
+// First, so its "back on the tab" counts before the pollers ask whether they may load.
+startIdleWatch();
 applyTexts();
 onLangChange(applyTexts);
 document.querySelector("#lang")!.addEventListener("click", (e) => {
