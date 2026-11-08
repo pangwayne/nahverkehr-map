@@ -587,7 +587,7 @@ export function startLiveMap(map: maplibregl.Map | null, onVehicleTap: (ref: Tri
       groupChips, worstTitle, worst, detail, detailTitle, detailStats, detailRange, detailRows, detailMore,
       notices, findings, liveShare, kindTitle, kindBars, kindNote,
       strip, delays, lead, leadNote, rulerTitle, ruler, rulerAxis, rulerLegend, hist, histTitle, histAxis,
-      stuck,
+      stuck, share,
     };
   }
 
@@ -621,6 +621,8 @@ export function startLiveMap(map: maplibregl.Map | null, onVehicleTap: (ref: Tri
     renderDist(counted);
     renderDelays(counted);
     const hasData = health.pct !== null || counted.length > 0;
+    // Nothing to share yet; shown once the numbers are in, so it does not jump down as they fill the column.
+    ui.share.hidden = !hasData;
     ui.strip.classList.toggle("warn", health.warn);
     // The warning first: on a narrow phone the line is cut at the end, and the numbers may go, the warning not.
     ui.strip.textContent = [

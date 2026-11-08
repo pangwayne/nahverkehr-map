@@ -2207,6 +2207,25 @@ body.panel-open #map-area .maplibregl-ctrl-bottom-right {
     display: block;
   }
 
+  /* No jump when the first numbers arrive (layout shift, CLS): the scrollbar's room is kept from the start,
+     and the headline and the line under it keep their loaded height while loading. */
+  #live {
+    scrollbar-gutter: stable;
+  }
+
+  #live .live-headline {
+    min-height: calc(34px * 1.1 + 1px);
+  }
+
+  #live .live-health {
+    min-height: 2lh;
+  }
+
+  #live .live-health[hidden] {
+    display: block;
+    visibility: hidden;
+  }
+
   #map-area .maplibregl-ctrl-bottom-left,
   #map-area .maplibregl-ctrl-bottom-right {
     bottom: 0;
@@ -2860,6 +2879,10 @@ body.panel-open #map-area .maplibregl-ctrl-bottom-right {
   font-size: 11px;
   font-weight: 600;
   color: var(--late);
+}
+
+.live-share-link[hidden] {
+  display: none;
 }
 
 .live-share-link {
