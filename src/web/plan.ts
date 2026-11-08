@@ -13,7 +13,7 @@ import { PLAN_PAST_MS } from "../worker/transitous";
 export interface LegStop {
   name: string;
   stopId: string | null;
-  platform: string | null; // "Gleis 2" for trains, like the board; null where unknown
+  platform: string | null; // "Platform 2" / "Gleis 2" for trains, like the board; null where unknown
   plannedPlatform: string | null; // set when the train leaves from another platform than planned
   lon: number;
   lat: number;

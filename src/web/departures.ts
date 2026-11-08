@@ -20,7 +20,7 @@ export interface DepartureRow {
   stopName: string;
   lon: number;
   lat: number;
-  platform: string | null; // e.g. "Gleis 2"; null where we do not know what the sign says
+  platform: string | null; // e.g. "Platform 2" / "Gleis 2"; null where we do not know what the sign says
   plannedPlatform: string | null; // set when the train leaves from another platform than planned
   depMs: number;
   schedMs: number;
@@ -97,14 +97,14 @@ const PLATFORM_NUMBER = /^\d{1,2}$/;
 // `tracks`: only used where they are the sign (VRR), to confirm the platform and follow a live change.
 export function platformLabel(stopId: string | undefined | null, mode: Mode, tracks: Tracks = {}): string | null {
   const n = platformNumbers(stopId, mode, tracks)?.live ?? null;
-  return n === null ? null : `Gleis ${n}`;
+  return n === null ? null : t().platform(n);
 }
 
-// The planned platform when the train now leaves from another one ("Gleis 12" while `platformLabel` says
-// Gleis 11), else null. Only VRR: elsewhere the track fields are not the sign.
+// The planned platform's number when the train now leaves from another one ("12" while `platformLabel` says
+// "Platform 11"), else null. Only VRR: elsewhere the track fields are not the sign.
 export function plannedPlatform(stopId: string | undefined | null, mode: Mode, tracks: Tracks = {}): string | null {
   const n = platformNumbers(stopId, mode, tracks);
-  return n && n.planned !== n.live ? `Gleis ${n.planned}` : null;
+  return n && n.planned !== n.live ? String(n.planned) : null;
 }
 
 function platformNumbers(

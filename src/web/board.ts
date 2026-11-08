@@ -689,7 +689,7 @@ function renderRow(
   badge.style.backgroundColor = color;
   badge.style.color = badgeTextColor(color, r.textColor);
 
-  // Destination, then what it is and where: "Stadtbahn · Colmantstr./Hbf", "Zug · Gleis 2".
+  // Destination, then what it is and where: "Stadtbahn · Colmantstr./Hbf", "Zug · Gleis 2" ("Train · Platform 2").
   const dest = el("span", "dest");
   dest.append(el("span", "dest-name", stopName(r.headsign)));
   const details = el("small", "");
