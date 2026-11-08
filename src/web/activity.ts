@@ -48,7 +48,8 @@ function buildNote(): HTMLElement {
   el.className = "toast idle-note";
   el.setAttribute("role", "status");
   el.hidden = true;
-  document.body.append(el);
+  // At the top of the map, where nothing else sits (the overview bar and the map's credits are at the bottom).
+  (document.querySelector("#map-area") ?? document.body).append(el);
   return el;
 }
 

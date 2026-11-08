@@ -1822,10 +1822,19 @@ html[lang="en"] .flag-en {
   transform: translate(-50%, 0);
 }
 
-/* The idle pause note (activity.ts): stays until someone is back. On phones it sits above the overview bar. */
+/* The idle pause note (activity.ts): stays until someone is back. At the top of the map, centred, clear of
+   the zoom buttons on the right. */
 .idle-note {
-  bottom: calc(var(--live-bar-h, 0px) + 16px);
+  position: absolute;
+  top: 12px;
+  bottom: auto;
+  max-width: min(420px, calc(100% - 120px));
   text-align: center;
+  transform: translate(-50%, -8px);
+}
+
+.idle-note.show {
+  transform: translate(-50%, 0);
 }
 
 /* Search lists: a name, and under it what it is (address, saved route, ...). */
