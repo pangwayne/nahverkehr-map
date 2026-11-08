@@ -1,0 +1,306 @@
+// Turns Transitous stoptimes into departure-board rows, plus the text shown for each row.
+// Pure functions only (no DOM, no fetch). Texts come from i18n.ts.
+
+import { type DelayClass, delayClass } from "./delayband";
+import type { Alert, Mode, StopTime } from "./api";
+import { t } from "./i18n";
+
+// Keep a departure on the board this long after it left (times have minute resolution).
+export const DEPARTED_GRACE_MS = 30_000;
+
+// The colour classes of a delay: the same bands as the live overview (delayband.ts).
+export type DelayLevel = DelayClass;
+
+export interface DepartureRow {
+  tripId: string;
+  line: string;
+  extra: boolean; // a trip the timetable does not know (no line name, no usable trip ID)
+  headsign: string;
+  mode: Mode;
+  stopName: string;
+  lon: number;
+  lat: number;
+  platform: string | null; // e.g. "Gleis 2"; null where we do not know what the sign says
+  plannedPlatform: string | null; // set when the train leaves from another platform than planned
+  depMs: number;
+  schedMs: number;
+  delaySec: number; // positive = late
+  realTime: boolean;
+  cancelled: boolean;
+  color: string | null; // "#rrggbb" or null
+  textColor: string | null;
+  alerts: Alert[]; // notices the feed attached to this departure at this stop
+}
+
+const HEX_COLOR = /^[0-9a-fA-F]{6}$/;
+
+// Transitous colors come as "rrggbb"; anything else is ignored.
+export const hexOrNull = (c: string | undefined): string | null => (c && HEX_COLOR.test(c) ? `#${c}` : null);
+
+// Long-distance and other non-local traffic is left off the boards (IC/ICE, coaches, planes).
+const HIDDEN_MODES = new Set<Mode>(["HIGHSPEED_RAIL", "LONG_DISTANCE", "NIGHT_RAIL", "COACH", "AIRPLANE"]);
+export const isHiddenMode = (mode: Mode): boolean => HIDDEN_MODES.has(mode);
+
+const RAIL_MODES = new Set<Mode>(["REGIONAL_RAIL", "REGIONAL_FAST_RAIL", "SUBURBAN", "RAIL"]);
+
+// Trams, Stadtbahn and buses are hardly ever more than a few minutes early.
+// Much earlier than that is broken live data (seen: a steady "-9", a "-16"). Trains are not checked.
+const EARLY_CHECK_MODES = new Set<Mode>(["TRAM", "SUBWAY", "BUS"]);
+export const TOO_EARLY_SEC = 5 * 60;
+
+// True when a live time this early cannot be right; the board then shows the timetable time instead.
+export function tooEarly(delaySec: number, mode: Mode): boolean {
+  return EARLY_CHECK_MODES.has(mode) && delaySec < -TOO_EARLY_SEC;
+}
+
+// Without live data a trip runs to its timetable, yet the feed sometimes moves one anyway (seen: a tram 66
+// planned 14:47 put at 16:13, with all its later stops at that same minute). Such a time is backed by
+// nothing: a small move is shown as the timetable, a move this big drops the departure or connection.
+export const UNBACKED_SHIFT_SEC = 15 * 60;
+
+// True when a departure without live data was moved so far from its timetable that it is no departure at all.
+export function unbackedShift(delaySec: number, realTime: boolean): boolean {
+  return !realTime && Math.abs(delaySec) > UNBACKED_SHIFT_SEC;
+}
+
+// Live times that make a stretch take less than half its timetable time cannot be right (seen: 14 stops,
+// 25 min planned, in 0 min). Only checked when the timetable gives it this long; short hops round too much.
+// The route search, the trip card and a followed connection's refresh all use this, so a refresh cannot turn
+// times the search threw out back into live ones.
+const COLLAPSE_CHECK_MS = 4 * 60_000;
+
+export function collapsed(fromMs: number, toMs: number, schedFromMs: number, schedToMs: number): boolean {
+  const planned = schedToMs - schedFromMs;
+  return planned >= COLLAPSE_CHECK_MS && toMs - fromMs < planned / 2;
+}
+
+// Two shapes of rail platform IDs, one per transport association. Each rule only applies to its own shape.
+// VRS (Bonn, Köln): IDs end in ":7:<70 + platform>", e.g. "de:05314:66101:7:72" = Gleis 2. Checked against
+// DB's own platforms for ~160 trains at Bonn Hbf, Bad Godesberg and Köln Messe/Deutz (Gleis 1-10).
+// Transitous' `track` field is not the sign there (it says 78 for Bonn Hbf Gleis 1).
+const VRS_PLATFORM = /:7:(\d{2})$/;
+// VRR (Düsseldorf, Neuss, Wuppertal...): rail platforms sit in areas 90-99 and end in the platform number,
+// and there `track` is that same number: "de:05111:18235:90:4", track "4", described "Gleis 4+5" (Düsseldorf
+// Hbf, checked 2026-10-25 for Gleis 4-20 against the feed's own descriptions). Only when ID and track agree.
+const VRR_PLATFORM = /:9\d:(\d{1,2})$/;
+
+// The track fields of one stop time: `track` live, `scheduledTrack` planned (Transitous' names).
+export interface Tracks {
+  track?: string | null;
+  scheduledTrack?: string | null;
+}
+
+const PLATFORM_NUMBER = /^\d{1,2}$/;
+
+// What the platform sign says, where we know it: only trains. Bus and tram numbers in the data
+// do not match the signs (Rheinallee's bays C1-C3 come as 26-28), so they are left out.
+// `tracks`: only used where they are the sign (VRR), to confirm the platform and follow a live change.
+export function platformLabel(stopId: string | undefined | null, mode: Mode, tracks: Tracks = {}): string | null {
+  const n = platformNumbers(stopId, mode, tracks)?.live ?? null;
+  return n === null ? null : `Gleis ${n}`;
+}
+
+// The planned platform when the train now leaves from another one ("Gleis 12" while `platformLabel` says
+// Gleis 11), else null. Only VRR: elsewhere the track fields are not the sign.
+export function plannedPlatform(stopId: string | undefined | null, mode: Mode, tracks: Tracks = {}): string | null {
+  const n = platformNumbers(stopId, mode, tracks);
+  return n && n.planned !== n.live ? `Gleis ${n.planned}` : null;
+}
+
+function platformNumbers(
+  stopId: string | undefined | null,
+  mode: Mode,
+  { track, scheduledTrack }: Tracks,
+): { live: number; planned: number } | null {
+  if (!stopId || !RAIL_MODES.has(mode)) return null;
+  const vrs = VRS_PLATFORM.exec(stopId);
+  if (vrs) {
+    const n = Number(vrs[1]) - 70;
+    return n >= 1 ? { live: n, planned: n } : null;
+  }
+  const vrr = VRR_PLATFORM.exec(stopId);
+  // The ID must agree with one of the track fields, else this is some other numbering.
+  if (!vrr || (track !== vrr[1] && scheduledTrack !== vrr[1])) return null;
+  const num = (t: string | null | undefined) => (t && PLATFORM_NUMBER.test(t) ? Number(t) : Number(vrr[1]));
+  const live = num(track);
+  const planned = num(scheduledTrack);
+  return live >= 1 && live <= 30 && planned >= 1 && planned <= 30 ? { live, planned } : null;
+}
+
+// "RB26", not "RB26 (25445)": the number in brackets is the train number, which riders do not need.
+// Null when the feed has no line name at all (extra trips added by the live feed).
+export function lineName(displayName: string | undefined, routeShortName: string | undefined): string | null {
+  const name = (routeShortName || displayName || "").replace(/\s*\(\d+\)$/, "").trim();
+  return name && name !== "?" ? name : null;
+}
+
+// Local departures you can board, sorted by (predicted) departure time, exact duplicates removed.
+export function toRows(stopTimes: StopTime[]): DepartureRow[] {
+  const rows: DepartureRow[] = [];
+  const seen = new Set<string>();
+
+  for (const st of stopTimes) {
+    const p = st.place;
+    // Arrival-only entries (e.g. at the last stop of a trip) are not departures.
+    if (st.pickupDropoffType === "NOT_ALLOWED" || !p.departure) continue;
+    if (HIDDEN_MODES.has(st.mode)) continue;
+
+    const liveMs = Date.parse(p.departure);
+    const schedMs = p.scheduledDeparture ? Date.parse(p.scheduledDeparture) : liveMs;
+    if (unbackedShift((liveMs - schedMs) / 1000, st.realTime)) continue;
+    // A live time that cannot be right is replaced by the timetable (shown as "timetable only"), and so is
+    // a time the feed moved without live data.
+    const implausible = st.realTime && tooEarly((liveMs - schedMs) / 1000, st.mode);
+    const depMs = implausible || !st.realTime ? schedMs : liveMs;
+    const key = `${st.tripId}|${p.stopId ?? p.name}|${depMs}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const line = lineName(st.displayName, st.routeShortName);
+    rows.push({
+      tripId: st.tripId,
+      line: line ?? "Extra",
+      extra: line === null,
+      headsign: st.headsign,
+      mode: st.mode,
+      stopName: p.name,
+      lon: p.lon,
+      lat: p.lat,
+      platform: platformLabel(p.stopId, st.mode, p),
+      plannedPlatform: plannedPlatform(p.stopId, st.mode, p),
+      depMs,
+      schedMs,
+      delaySec: (depMs - schedMs) / 1000,
+      realTime: st.realTime && !implausible,
+      cancelled: st.cancelled || st.tripCancelled || p.cancelled === true,
+      color: hexOrNull(st.routeColor),
+      textColor: hexOrNull(st.routeTextColor),
+      alerts: p.alerts ?? [],
+    });
+  }
+  return rows.sort((a, b) => a.depMs - b.depMs);
+}
+
+// Combine the boards of several stations into one list. Nearby stations often return the same
+// departures (Transitous groups stops with similar names), so duplicates are dropped.
+export function mergeRows(lists: DepartureRow[][]): DepartureRow[] {
+  const seen = new Set<string>();
+  const out: DepartureRow[] = [];
+  for (const rows of lists) {
+    for (const r of rows) {
+      const key = `${r.tripId}|${r.stopName}|${r.depMs}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(r);
+    }
+  }
+  return out.sort((a, b) => a.depMs - b.depMs);
+}
+
+// Rows still worth showing at `nowMs`, at most `limit`.
+export function upcoming(rows: DepartureRow[], nowMs: number, limit: number): DepartureRow[] {
+  return rows.filter((r) => r.depMs >= nowMs - DEPARTED_GRACE_MS).slice(0, limit);
+}
+
+// The badge color: the feed's own, else grey for extra trips, slate for buses, blue for the rest.
+export const rowColor = (r: DepartureRow): string =>
+  r.color ?? (r.extra ? "#757575" : r.mode === "BUS" ? "#4a5a6a" : "#1565c0");
+
+// WCAG relative luminance of "#rrggbb".
+function luminance(hex: string): number {
+  const [r, g, b] = [1, 3, 5].map((i) => {
+    const v = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+}
+
+export function contrastRatio(a: string, b: string): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi! + 0.05) / (lo! + 0.05);
+}
+
+// Text colour for a line badge: the operator's own if it is readable (WCAG 4.5:1 for small text),
+// else black or white, whichever stands out more on the badge colour.
+export function badgeTextColor(background: string, given: string | null): string {
+  if (given && contrastRatio(given, background) >= 4.5) return given;
+  return contrastRatio("#000000", background) >= contrastRatio("#ffffff", background) ? "#000000" : "#ffffff";
+}
+
+// One row per line, in board order (both directions of a line run along the same streets).
+// Extra trips have no trip to ask for; a cancelled row is skipped, another row of that line may come.
+export function distinctLines(rows: DepartureRow[]): DepartureRow[] {
+  const seen = new Set<string>();
+  return rows.filter((r) => {
+    if (r.extra || r.cancelled) return false;
+    const key = lineKey(r);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export const lineKey = (r: DepartureRow): string => `${r.mode}|${r.line}`;
+
+// One variant of a line: its direction, short workings and branches each have their own destination,
+// and two towns' "bus 1" go to different places. Used to remember a line's path on the map.
+export const routeKey = (r: DepartureRow): string => `${lineKey(r)}|${r.headsign}`;
+
+// The same bands as the live overview and the map (delayband.ts, decision 2026-10-31): up to 1 min late is
+// punctual, early too. The text still says "-2" for an early departure (formatDelay).
+export function delayLevel(delaySec: number, realTime: boolean): DelayLevel {
+  return delayClass(delaySec, realTime);
+}
+
+// "+2" / "-1" in minutes, empty when on time.
+export function formatDelay(delaySec: number): string {
+  const min = Math.round(delaySec / 60);
+  if (min === 0) return "";
+  return min > 0 ? `+${min}` : `${min}`;
+}
+
+const berlinClock = new Intl.DateTimeFormat("de-DE", {
+  timeZone: "Europe/Berlin",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+// "21:50" in Berlin time.
+export function formatClock(ms: number): string {
+  return berlinClock.format(ms);
+}
+
+// "jetzt" / "now", "in 7 min", or a Berlin clock time for anything an hour or more away.
+// Rounds down: better to arrive a little early than to miss it.
+export function formatCountdown(depMs: number, nowMs: number): string {
+  const diff = depMs - nowMs;
+  if (diff < 60_000) return t().now;
+  const min = Math.floor(diff / 60_000);
+  if (min < 60) return t().inMin(min);
+  return berlinClock.format(depMs);
+}
+
+// Bonn's and Köln's Stadtbahn lines come as TRAM, like real trams (Bonn 61/62/65, Düsseldorf 701-709).
+// Düsseldorf's U70-U79 come as SUBWAY.
+const STADTBAHN_LINES = new Set(["1", "3", "4", "5", "7", "9", "12", "13", "15", "16", "17", "18", "63", "66", "67", "68"]);
+
+// What kind of vehicle, in words ("Stadtbahn", "Zug"); null when it is nothing we name.
+export function modeLabel(mode: Mode, line: string): string | null {
+  if (mode === "TRAM") return STADTBAHN_LINES.has(line) ? t().modeLightRail : t().modeTram;
+  if (mode === "SUBWAY") return t().modeLightRail;
+  if (mode === "BUS") return t().modeBus;
+  if (mode === "ODM") return t().modeOnDemand;
+  if (mode === "FUNICULAR") return t().modeSuspension; // the only one around: Wuppertal's Schwebebahn
+  if (mode === "FERRY") return t().modeFerry;
+  if (mode === "SUBURBAN") return t().modeSBahn;
+  if (RAIL_MODES.has(mode)) return t().modeTrain;
+  return null;
+}
+
+// The small line under the countdown: "+3 live", "pünktlich", "nur Fahrplan" or "fällt aus".
+export function delayState(delaySec: number, realTime: boolean, cancelled: boolean): { text: string; level: DelayLevel } {
+  if (cancelled) return { text: t().cancelled, level: "verylate" };
+  if (!realTime) return { text: t().timetableOnly, level: "unknown" };
+  const delay = formatDelay(delaySec);
+  return { text: delay ? t().liveDelay(delay) : t().onTimeShort, level: delayLevel(delaySec, true) };
+}

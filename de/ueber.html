@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>Über den Nahverkehr Pünktlichkeits-Check: Methode und Quellen</title>
+    <meta
+      name="description"
+      content="Wie der Pünktlichkeits-Check Live-Verspätungen für Bonn, Köln und Düsseldorf berechnet: Datenquellen, Methode und was die Zahlen nicht aussagen."
+    />
+    <link rel="canonical" href="https://nahverkehr.pangwayne.com/de/ueber" />
+    <link rel="alternate" hreflang="de" href="https://nahverkehr.pangwayne.com/de/ueber" />
+    <link rel="alternate" hreflang="en" href="https://nahverkehr.pangwayne.com/about" />
+    <link rel="alternate" hreflang="x-default" href="https://nahverkehr.pangwayne.com/about" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Nahverkehr Pünktlichkeits-Check" />
+    <meta property="og:locale" content="de_DE" />
+    <meta property="og:url" content="https://nahverkehr.pangwayne.com/de/ueber" />
+    <meta property="og:title" content="Über den Nahverkehr Pünktlichkeits-Check: Methode und Quellen" />
+    <meta
+      property="og:description"
+      content="Wie der Pünktlichkeits-Check Live-Verspätungen für Bonn, Köln und Düsseldorf berechnet: Datenquellen, Methode und was die Zahlen nicht aussagen."
+    />
+    <meta property="og:image" content="https://nahverkehr.pangwayne.com/og-image-de.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Nahverkehr Pünktlichkeits-Check: farbige Linien und Punkte für pünktliche sowie leicht, stärker und stark verspätete Fahrzeuge" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <!-- Keep the date in step with "Stand" below. The app itself is described in index.html. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "AboutPage",
+        "@id": "https://nahverkehr.pangwayne.com/de/ueber#page",
+        "url": "https://nahverkehr.pangwayne.com/de/ueber",
+        "name": "Über den Nahverkehr Pünktlichkeits-Check: Methode und Quellen",
+        "inLanguage": "de",
+        "dateModified": "2026-11-04",
+        "isPartOf": {
+          "@type": "WebSite",
+          "@id": "https://nahverkehr.pangwayne.com/#website",
+          "name": "Public Transport Punctuality Check",
+          "url": "https://nahverkehr.pangwayne.com/"
+        },
+        "about": {
+          "@type": "WebApplication",
+          "@id": "https://nahverkehr.pangwayne.com/de/#app",
+          "name": "Nahverkehr Pünktlichkeits-Check",
+          "url": "https://nahverkehr.pangwayne.com/de/"
+        },
+        "author": {
+          "@type": "Person",
+          "@id": "https://www.pangwayne.com/#person",
+          "name": "Pang Wayne Wee",
+          "url": "https://www.pangwayne.com/"
+        }
+      }
+    </script>
+    <link rel="stylesheet" href="/src/web/legal.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="logo" href="/de/">Nahverkehr Pünktlichkeits-Check</a>
+      <nav aria-label="Navigation">
+        <a href="/de/">Zur Karte</a>
+        <a href="https://www.pangwayne.com/de/impressum">Impressum</a>
+        <a href="/de/datenschutzerklaerung">Datenschutz</a>
+      </nav>
+      <a href="/about" hreflang="en" lang="en" class="lang-toggle" aria-label="Read in English">
+        <svg class="lang-flag" viewBox="0 0 60 36" width="20" height="12" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <clipPath id="uk-flag-t"><path d="M30,18 h30 v18 z v18 h-30 z h-30 v-18 z v-18 h30 z" /></clipPath>
+          <rect width="60" height="36" fill="#012169" />
+          <path d="M0,0 L60,36 M60,0 L0,36" stroke="#fff" stroke-width="7" />
+          <path d="M0,0 L60,36 M60,0 L0,36" clip-path="url(#uk-flag-t)" stroke="#C8102E" stroke-width="4" />
+          <path d="M30,0 v36 M0,18 h60" stroke="#fff" stroke-width="12" />
+          <path d="M30,0 v36 M0,18 h60" stroke="#C8102E" stroke-width="7" />
+        </svg>EN
+      </a>
+    </header>
+    <main class="wrap">
+      <h1>Über den Nahverkehr Pünktlichkeits-Check</h1>
+      <p>Stand: November 2026</p>
+
+      <p>
+        Der Nahverkehr Pünktlichkeits-Check zeigt live, wie pünktlich Busse, Bahnen und S-Bahnen in Bonn, Köln und
+        Düsseldorf gerade sind, berechnet aus öffentlichen Echtzeitdaten. Er ist ein persönliches Open-Source-Projekt
+        von <a href="https://www.pangwayne.com/de/">Pang Wayne Wee</a>, kostenlos und ohne Anmeldung nutzbar.
+      </p>
+      <p class="highlight"><a href="/de/">Zur Live-Karte</a></p>
+
+      <h2>Was zeigt die Seite?</h2>
+      <ul>
+        <li>Die Busse, Bahnen und S-Bahnen aus den öffentlichen Daten auf einer Karte, gefärbt nach ihrer aktuellen Verspätung.</li>
+        <li>Für jede Stadt den Anteil pünktlicher Fahrzeuge und den Median der Verspätung unter den verspäteten Fahrzeugen.</li>
+        <li>Bonn, Köln und Düsseldorf im Vergleich, auch getrennt nach Verkehrsmittel.</li>
+        <li>Aktuell verspätete Bahnlinien und die Fahrzeuge einer Linie.</li>
+        <li>Live-Abfahrten je Haltestelle und eine Routensuche.</li>
+      </ul>
+
+      <h2>Was bedeutet „pünktlich“?</h2>
+      <p>Pünktlich heißt hier: höchstens 1 Minute verspätet. Zu früh zählt als pünktlich. Die Farben stehen für:</p>
+      <ul>
+        <li>Grün: 0-1 Minute</li>
+        <li>Gelb: 2-5 Minuten</li>
+        <li>Orange: 6-10 Minuten</li>
+        <li>Rot: ab 11 Minuten</li>
+        <li>Grau: keine Live-Daten, nur Fahrplan</li>
+      </ul>
+      <p>Die Farbe gehört zum Fahrzeug, nicht zur Strecke: Eine rote Linie ist kein Stau, sondern ein verspätetes Fahrzeug auf seinem Weg.</p>
+
+      <h2>Wie werden die Zahlen berechnet?</h2>
+      <ul>
+        <li>Sie gelten für das ganze Stadtgebiet innerhalb der offiziellen Stadtgrenze, egal, was die Karte gerade zeigt, und werden jede Minute neu geladen.</li>
+        <li>Der Prozentwert zählt nur Fahrzeuge mit Live-Daten. Unter 10 solchen Fahrzeugen gibt es keinen Prozentwert.</li>
+        <li>Der Median der Verspätung zählt nur die verspäteten Fahrzeuge (ab 2 Minuten): Die Hälfte von ihnen ist weniger, die Hälfte mehr verspätet. Er erscheint ab 10 verspäteten Fahrzeugen.</li>
+        <li>Meldungen von 60 Minuten oder mehr bleiben als möglicherweise unzuverlässig außen vor; manche können echte Verspätungen sein. Diese Fahrzeuge bleiben auf der Karte, zählen aber in keiner Zahl mit, und ein Hinweis sagt, wie viele es sind. Bei einer großen Störung kann der Anteil pünktlicher Fahrzeuge dadurch besser aussehen, als er ist.</li>
+      </ul>
+
+      <h2>Welche Fahrzeuge zählen?</h2>
+      <p>
+        Gezählt werden Busse, Bahnen (Straßen-, Stadt- und U-Bahn) und S-Bahnen der Betreiber in den drei Städten, etwa
+        die KVB in Köln, die Stadtwerke Bonn (SWB) und die Rheinbahn in Düsseldorf. Regionalzüge (RB, RE) erscheinen als blasse Kreise auf
+        der Karte, zählen aber nicht: Ein verspäteter Zug auf der Durchfahrt würde sonst die Zahlen einer ganzen Stadt
+        verschieben. Ebenso Ersatzbusse, die den Namen einer Zuglinie tragen.
+      </p>
+
+      <h2>Sind die Positionen der Fahrzeuge echt?</h2>
+      <p>
+        Nein, sie sind geschätzt: aus Fahrplan und Live-Zeiten berechnet, kein GPS. Sind 40 % der Zeit zwischen zwei
+        Haltestellen vergangen, steht der Punkt bei 40 % der Strecke. Die Punkte bewegen sich jede Sekunde, neue Daten
+        kommen alle 1-2 Minuten.
+      </p>
+
+      <h2>Was sagen die Zahlen nicht aus?</h2>
+      <p>
+        Sie sind eine Momentaufnahme, keine Pünktlichkeitsstatistik. Ob eine Stadt im Allgemeinen pünktlicher ist als
+        eine andere, lässt sich daraus nicht ablesen. Es werden keine historischen Verkehrsdaten gesammelt oder
+        gespeichert. Ausfälle sind nicht erfasst: Ein fehlender Punkt heißt nicht, dass eine Fahrt ausfällt. Alle
+        Angaben ohne Gewähr.
+      </p>
+
+      <h2>Woher kommen die Daten?</h2>
+      <p>
+        Echtzeitdaten und Fahrpläne kommen von <a href="https://transitous.org">Transitous</a>, einem freien
+        Open-Source-Dienst, und seinen <a href="https://transitous.org/sources/">Datenquellen</a>. Kartendaten ©
+        <a href="https://www.openstreetmap.org/copyright">OpenStreetMap-Mitwirkende</a>, Karte:
+        <a href="https://openfreemap.org">OpenFreeMap</a>. Der Quellcode steht
+        <a href="https://github.com/pangwayne/nahverkehr-map">auf GitHub</a> (MIT-Lizenz).
+      </p>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,269 @@
+// Typed fetch helpers + the Transitous (MOTIS 2) shapes we use.
+
+import type { CityId } from "./cities";
+import type { MapSegment } from "./fleet";
+
+export interface Place {
+  name: string;
+  stopId?: string;
+  lat: number;
+  lon: number;
+  track?: string;
+  scheduledTrack?: string;
+  alerts?: Alert[];
+}
+
+// A service notice from the live feed (works, diversions, lifts out of order). Plain text only.
+export interface Alert {
+  headerText: string;
+  descriptionText: string;
+  url?: string;
+  severityLevel?: "UNKNOWN_SEVERITY" | "INFO" | "WARNING" | "SEVERE" | (string & {});
+  communicationPeriod?: { start?: string; end?: string }[];
+}
+
+// One piece of a walk (detailed transfers): a turn, stairs, a lift, and how far.
+export interface Step {
+  relativeDirection: string; // "LEFT", "STAIRS", "ELEVATOR", ...
+  distance: number; // meters
+  streetName: string;
+  fromLevel?: number;
+  toLevel?: number;
+}
+
+export type Mode =
+  | "TRAM"
+  | "SUBWAY"
+  | "BUS"
+  | "COACH"
+  | "SUBURBAN"
+  | "REGIONAL_RAIL"
+  | "REGIONAL_FAST_RAIL"
+  | "RAIL"
+  | "LONG_DISTANCE"
+  | "HIGHSPEED_RAIL"
+  | "NIGHT_RAIL"
+  | "AIRPLANE"
+  | "OTHER" // e.g. extra trips added by the live feed
+  | (string & {});
+
+// One platform from map/stops. German IDs look like "de-DELFI_de:05314:61101:2:64".
+export interface StopPlace extends Place {
+  stopId: string;
+  modes?: Mode[];
+}
+
+// Where and when one departure happens. Times are ISO strings in UTC; departure includes delay.
+export interface StopTimePlace extends Place {
+  departure?: string;
+  scheduledDeparture?: string;
+  cancelled?: boolean;
+}
+
+export interface StopTime {
+  place: StopTimePlace;
+  mode: Mode;
+  realTime: boolean;
+  headsign: string;
+  tripId: string;
+  displayName?: string;
+  routeShortName?: string;
+  routeColor?: string; // "rrggbb", only when the feed has one
+  routeTextColor?: string;
+  cancelled: boolean;
+  tripCancelled: boolean;
+  pickupDropoffType?: "NORMAL" | "NOT_ALLOWED" | (string & {});
+}
+
+export interface StopTimesResponse {
+  stopTimes: StopTime[];
+  nextPageCursor?: string; // "LATER|1792961640": the departures after these
+}
+
+// One stop of a trip (from /trip). The first stop has no arrival, the last one no departure.
+export interface TripStopPlace extends Place {
+  arrival?: string;
+  scheduledArrival?: string;
+  departure?: string;
+  scheduledDeparture?: string;
+  cancelled?: boolean;
+}
+
+export interface Leg {
+  mode: Mode;
+  tripId?: string;
+  headsign?: string;
+  displayName?: string;
+  routeShortName?: string;
+  routeColor?: string;
+  routeTextColor?: string;
+  realTime: boolean;
+  cancelled?: boolean;
+  from: TripStopPlace;
+  to: TripStopPlace;
+  intermediateStops?: TripStopPlace[];
+  legGeometry: { points: string; precision: number }; // precision 6 here, unlike map/trips (5)
+  alerts?: Alert[];
+  steps?: Step[]; // walks only
+}
+
+// /trip answers with a trip as an itinerary: usually one leg, several if the vehicle changes number.
+export interface Itinerary {
+  legs: Leg[];
+}
+
+// One leg of a /plan answer: a ride (with a trip) or a walk ("WALK", no trip, no line).
+export interface PlanLeg extends Leg {
+  startTime: string; // predicted, UTC
+  endTime: string;
+  scheduledStartTime: string;
+  scheduledEndTime: string;
+  duration: number; // seconds
+  interlineWithPreviousLeg?: boolean; // same vehicle as the leg before: stay seated
+}
+
+export interface PlanItinerary {
+  startTime: string;
+  endTime: string;
+  duration: number; // seconds
+  transfers: number;
+  legs: PlanLeg[];
+}
+
+// /plan: connections, plus walking all the way (`direct`), plus cursors for earlier and later ones.
+export interface PlanResponse {
+  itineraries: PlanItinerary[];
+  direct: PlanItinerary[];
+  previousPageCursor?: string;
+  nextPageCursor?: string;
+}
+
+export interface Fetched<T> {
+  data: T;
+  fetchedAtMs: number; // when the Worker got it from Transitous
+  cacheState: string | null; // HIT / MISS / STALE
+  windowEndMs?: number | null; // live vehicles: the end of the time window the answer covers (X-Window-End)
+}
+
+// The Worker could not get a fresh copy (Transitous failed, or this visitor hit the rate limit) and sent
+// its last good one instead. Shown like a failed refresh: the data is real, but the latest try failed.
+export function isStale(res: Fetched<unknown>): boolean {
+  return res.cacheState === "STALE";
+}
+
+async function fetchJson<T>(path: string, signal?: AbortSignal): Promise<Fetched<T>> {
+  const res = await fetch(path, { signal });
+  if (!res.ok) throw new Error(`${path} answered ${res.status}`);
+  const data = (await res.json()) as T;
+  const fetchedHeader = res.headers.get("X-Fetched-At");
+  const windowHeader = res.headers.get("X-Window-End");
+  return {
+    data,
+    fetchedAtMs: fetchedHeader ? Date.parse(fetchedHeader) : Date.now(),
+    cacheState: res.headers.get("X-Cache"),
+    windowEndMs: windowHeader ? Date.parse(windowHeader) : null,
+  };
+}
+
+// The query only changes the address, so browsers do not reuse a list cached before the area grew.
+// The Worker ignores it.
+export function fetchStops(signal?: AbortSignal): Promise<Fetched<StopPlace[]>> {
+  return fetchJson<StopPlace[]>("/api/stops?area=rheinland-1", signal);
+}
+
+// `cursor`: a "later" page cursor from an earlier answer.
+export function fetchDepartures(
+  stopId: string,
+  signal?: AbortSignal,
+  cursor: string | null = null,
+): Promise<Fetched<StopTimesResponse>> {
+  const extra = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
+  return fetchJson<StopTimesResponse>(`/api/departures?stopId=${encodeURIComponent(stopId)}${extra}`, signal);
+}
+
+// An address or a place (landmark, shop, park) from the place search.
+export interface GeocodeMatch {
+  type: "ADDRESS" | "PLACE" | "STOP" | (string & {});
+  name: string;
+  id: string;
+  lat: number;
+  lon: number;
+  street?: string;
+  houseNumber?: string;
+  category?: string;
+  areas?: { name: string; adminLevel: number; default?: boolean }[];
+}
+
+// Sends what was typed to the Worker (and from there to Transitous); only on an explicit search.
+export function fetchGeocode(text: string, lang: string, signal?: AbortSignal): Promise<Fetched<GeocodeMatch[]>> {
+  const params = new URLSearchParams({ text, lang });
+  return fetchJson<GeocodeMatch[]>(`/api/geocode?${params.toString()}`, signal);
+}
+
+// Every vehicle's stretches of track in one map tile ("x,y", tiles.ts) during the next few minutes.
+export function fetchVehicles(tile: string, signal?: AbortSignal): Promise<Fetched<MapSegment[]>> {
+  return fetchJson<MapSegment[]>(`/api/vehicles?tile=${tile}`, signal); // digits and a comma only
+}
+
+// Every vehicle's stretches of track in one city's box (cities.ts) during the next few minutes.
+export function fetchCity(id: CityId, signal?: AbortSignal): Promise<Fetched<MapSegment[]>> {
+  return fetchJson<MapSegment[]>(`/api/city?id=${id}`, signal); // one of three fixed ids
+}
+
+export function fetchTrip(tripId: string, signal?: AbortSignal): Promise<Fetched<Itinerary>> {
+  return fetchJson<Itinerary>(`/api/trip?tripId=${encodeURIComponent(tripId)}`, signal);
+}
+
+// What the route panel asks for; the Worker checks every field again (src/worker/transitous.ts).
+export interface PlanRequest {
+  from: string; // stop IDs, or positions (positionPlace in plan.ts): My location, an address, a map point
+  to: string;
+  time: string; // "2026-10-24T17:00Z"
+  arriveBy: boolean;
+  cursor: string | null; // earlier / later page
+  prefs?: Record<string, string>; // travel settings as query fields (prefsQuery in prefs.ts); none: defaults
+}
+
+// A route search the Worker refused or could not answer. `status` is null when nothing came back at all.
+export class PlanError extends Error {
+  constructor(
+    readonly status: number | null,
+    readonly retryAfterS: number | null,
+  ) {
+    super(`/api/plan failed (${status ?? "no answer"})`);
+  }
+}
+
+export async function fetchPlan(q: PlanRequest, signal?: AbortSignal): Promise<Fetched<PlanResponse>> {
+  const params = new URLSearchParams({ from: q.from, to: q.to, time: q.time, arriveBy: q.arriveBy ? "1" : "0" });
+  if (q.cursor) params.set("cursor", q.cursor);
+  for (const [name, value] of Object.entries(q.prefs ?? {})) params.set(name, value);
+  let res: Response;
+  try {
+    res = await fetch(`/api/plan?${params.toString()}`, { signal });
+  } catch (err) {
+    throw noAnswer(err, signal); // offline, or the time limit ran out
+  }
+  if (!res.ok) {
+    const retry = Number(res.headers.get("Retry-After"));
+    throw new PlanError(res.status, Number.isFinite(retry) && retry > 0 ? retry : null);
+  }
+  const fetchedHeader = res.headers.get("X-Fetched-At");
+  let data: PlanResponse;
+  try {
+    data = (await res.json()) as PlanResponse;
+  } catch (err) {
+    throw noAnswer(err, signal); // broken JSON, or the time limit ran out while the body was still loading
+  }
+  return {
+    data,
+    fetchedAtMs: fetchedHeader ? Date.parse(fetchedHeader) : Date.now(),
+    cacheState: res.headers.get("X-Cache"),
+  };
+}
+
+// A search the user cancelled stays a cancellation; anything else counts as "no usable answer".
+function noAnswer(err: unknown, signal: AbortSignal | undefined): unknown {
+  if (signal?.aborted && signal.reason instanceof DOMException && signal.reason.name === "AbortError") return err;
+  return new PlanError(null, null);
+}

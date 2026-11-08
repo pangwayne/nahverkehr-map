@@ -1,0 +1,234 @@
+// Turns a Transitous trip (/trip) into a route for the map and a stop list for the info card,
+// and works out where along its stops the vehicle is right now.
+// Pure functions only (no DOM, no fetch).
+
+import type { Alert, Itinerary, Mode, TripStopPlace } from "./api";
+import { collapsed, hexOrNull, lineName, tooEarly } from "./departures";
+import { type LonLat, decodePolyline } from "./geo";
+
+export interface RouteStop {
+  stopId: string | null;
+  name: string;
+  lon: number;
+  lat: number;
+  track: string | null;
+  scheduledTrack: string | null;
+  arrMs: number | null; // predicted (includes delay); null at the first stop
+  depMs: number | null; // predicted; null at the last stop
+  schedArrMs: number | null;
+  schedDepMs: number | null;
+  cancelled: boolean;
+  alerts: Alert[]; // notices for this stop only
+  // false: the part of the trip arriving here / leaving from here has no live data (a through service can be
+  // live on one section and not on the next), or its live times looked wrong; its times are the timetable.
+  // Missing: as the whole trip (`TripRoute.realTime`).
+  arrLive?: boolean;
+  depLive?: boolean;
+}
+
+export interface TripRoute {
+  line: string;
+  headsign: string;
+  mode: Mode;
+  color: string | null; // "#rrggbb" or null
+  textColor: string | null;
+  realTime: boolean;
+  cancelled: boolean;
+  path: LonLat[]; // the whole track line, first to last stop
+  stops: RouteStop[];
+  // First stop whose live times looked wrong; from there on, the stop times are the timetable.
+  implausibleFrom: number | null;
+  alerts: Alert[]; // the trip's own notices (each stop's are on the stop)
+}
+
+export type TripState = "before" | "moving" | "atStop" | "ended";
+
+export interface TripProgress {
+  state: TripState;
+  next: number | null; // index of the next (or current) stop; null once the trip has ended
+  delaySec: number; // at that stop, positive = late
+}
+
+const ms = (iso: string | undefined) => (iso ? Date.parse(iso) : null);
+
+// One stop of a leg; `live`: the leg has live data.
+export function toStop(p: TripStopPlace, live = true): RouteStop {
+  return {
+    stopId: p.stopId ?? null,
+    name: p.name,
+    lon: p.lon,
+    lat: p.lat,
+    track: p.track ?? null,
+    scheduledTrack: p.scheduledTrack ?? null,
+    arrMs: ms(p.arrival),
+    depMs: ms(p.departure),
+    schedArrMs: ms(p.scheduledArrival),
+    schedDepMs: ms(p.scheduledDeparture),
+    cancelled: p.cancelled === true,
+    alerts: p.alerts ?? [],
+    arrLive: live,
+    depLive: live,
+  };
+}
+
+// Join all legs into one route. Where one leg ends and the next starts at the same stop,
+// that stop appears once (arrival from the first leg, departure from the second).
+// Null for an answer without legs (also a broken one: "{}").
+export function tripRoute(itinerary: Itinerary): TripRoute | null {
+  if (!Array.isArray(itinerary?.legs)) return null;
+  const first = itinerary.legs[0];
+  if (!first) return null;
+
+  const stops: RouteStop[] = [];
+  const path: LonLat[] = [];
+  const alerts: Alert[] = [];
+  for (const leg of itinerary.legs) {
+    const places = [leg.from, ...(leg.intermediateStops ?? []), leg.to];
+    alerts.push(...(leg.alerts ?? []));
+    const legStops = places.map((p) => toStop(p, leg.realTime));
+    // Without live data a section runs to its timetable; times the feed moved anyway are not backed by
+    // anything. Per section: the trip's other sections may well be live.
+    if (!leg.realTime) legStops.forEach(useTimetable);
+    const prev = stops[stops.length - 1];
+    const start = legStops[0]!;
+    if (prev && prev.name === start.name && prev.depMs === null) {
+      prev.depMs = start.depMs;
+      prev.schedDepMs = start.schedDepMs;
+      prev.depLive = start.depLive;
+      prev.alerts = [...prev.alerts, ...start.alerts];
+      legStops.shift();
+    }
+    stops.push(...legStops);
+    path.push(...decodePolyline(leg.legGeometry.points, leg.legGeometry.precision));
+  }
+
+  const last = itinerary.legs[itinerary.legs.length - 1]!;
+  const realTime = itinerary.legs.some((l) => l.realTime);
+  const implausibleFrom = realTime ? firstImplausible(stops, first.mode) : null;
+  if (implausibleFrom !== null) useTimetableFrom(stops, implausibleFrom);
+  return {
+    line: lineName(first.displayName, first.routeShortName) ?? "?",
+    headsign: last.headsign ?? last.to.name,
+    mode: first.mode,
+    color: hexOrNull(first.routeColor),
+    textColor: hexOrNull(first.routeTextColor),
+    realTime,
+    cancelled: itinerary.legs.every((l) => l.cancelled === true),
+    path,
+    stops,
+    implausibleFrom,
+    alerts,
+  };
+}
+
+const BACKWARDS_MS = 60_000; // times have minute resolution, so allow one minute of noise
+const BUNCH_STOPS = 3;
+const BUNCH_SPREAD_MS = 3 * 60_000;
+
+const minuteOf = (t: number) => Math.floor(t / 60_000);
+const schedLeaveMs = (s: RouteStop) => s.schedDepMs ?? s.schedArrMs;
+
+// The first stop whose live times cannot be right, or null when they all look fine:
+// 1. backwards: earlier than a stop before it; 2. bunched: 3+ stops in a row at the same minute while
+// the timetable spreads them over more than 3 min; 3. too early: trams and buses only; 4. collapsed: from one
+// stop to the next in less than half the timetable time (departures.ts), counted from the earlier stop.
+// Cancelled stops are skipped (their times mean nothing).
+export function firstImplausible(stops: RouteStop[], mode: Mode): number | null {
+  let bad = Infinity;
+  let latest = -Infinity; // latest predicted time seen so far
+  let runStart = -1; // index of the first stop in the current same-minute run
+  let prev = -1; // index of the previous stop that was looked at
+
+  stops.forEach((s, i) => {
+    if (s.cancelled) return;
+
+    for (const t of [s.arrMs, s.depMs]) {
+      if (t === null) continue;
+      if (t < latest - BACKWARDS_MS) bad = Math.min(bad, i);
+      latest = Math.max(latest, t);
+    }
+
+    const leave = leaveMs(s);
+    const sched = schedLeaveMs(s);
+    if (leave !== null && sched !== null && tooEarly((leave - sched) / 1000, mode)) bad = Math.min(bad, i);
+
+    const before = prev >= 0 ? stops[prev]! : null;
+    const from = before ? leaveMs(before) : null;
+    const schedFrom = before ? schedLeaveMs(before) : null;
+    const to = reachMs(s);
+    const schedTo = s.schedArrMs ?? s.schedDepMs;
+    if (from !== null && schedFrom !== null && to !== null && schedTo !== null && collapsed(from, to, schedFrom, schedTo)) {
+      bad = Math.min(bad, prev);
+    }
+
+    if (leave === null) {
+      runStart = -1;
+    } else {
+      const prevLeave = prev >= 0 ? leaveMs(stops[prev]!) : null;
+      if (runStart < 0 || prevLeave === null || minuteOf(prevLeave) !== minuteOf(leave)) runStart = i;
+      const inRun = stops.slice(runStart, i + 1).filter((r) => !r.cancelled).length;
+      const startSched = schedLeaveMs(stops[runStart]!);
+      if (inRun >= BUNCH_STOPS && sched !== null && startSched !== null && sched - startSched > BUNCH_SPREAD_MS) {
+        bad = Math.min(bad, runStart);
+      }
+    }
+    prev = i;
+  });
+
+  return Number.isFinite(bad) ? bad : null;
+}
+
+// From stop `from` on, show the timetable instead of the broken live times. Never earlier than the
+// stop before (a late vehicle cannot jump back to its timetable time), so the dot does not run backwards.
+function useTimetableFrom(stops: RouteStop[], from: number): void {
+  let floor = -Infinity;
+  for (let i = from - 1; i >= 0; i--) {
+    const t = stops[i]!.cancelled ? null : leaveMs(stops[i]!);
+    if (t !== null) {
+      floor = t;
+      break;
+    }
+  }
+  for (let i = from; i < stops.length; i++) {
+    const s = stops[i]!;
+    s.arrLive = false;
+    s.depLive = false;
+    if (s.schedArrMs !== null) s.arrMs = Math.max(s.schedArrMs, floor);
+    if (s.schedDepMs !== null) s.depMs = Math.max(s.schedDepMs, s.arrMs ?? floor, floor);
+    const t = leaveMs(s);
+    if (!s.cancelled && t !== null) floor = t;
+  }
+}
+
+function useTimetable(s: RouteStop): void {
+  s.arrLive = false;
+  s.depLive = false;
+  if (s.schedArrMs !== null) s.arrMs = s.schedArrMs;
+  if (s.schedDepMs !== null) s.depMs = s.schedDepMs;
+}
+
+// When the vehicle leaves / reaches a stop (the first stop has no arrival, the last no departure).
+export const leaveMs = (s: RouteStop) => s.depMs ?? s.arrMs;
+export const reachMs = (s: RouteStop) => s.arrMs ?? s.depMs;
+
+// Where along its stops the trip is at `nowMs`. Cancelled stops are skipped, so a trip whose first
+// stops are all cancelled starts at its first stop that is not.
+export function progressAt(stops: RouteStop[], nowMs: number): TripProgress {
+  const next = stops.findIndex((s) => !s.cancelled && (leaveMs(s) ?? -Infinity) > nowMs);
+  if (next === -1) return { state: "ended", next: null, delaySec: 0 };
+
+  const stop = stops[next]!;
+  const reach = reachMs(stop) ?? nowMs;
+  const first = stops.findIndex((s) => !s.cancelled);
+  const state: TripState = next === first ? "before" : reach <= nowMs ? "atStop" : "moving";
+
+  // Delay when leaving that stop (what a passenger waiting there cares about, and what the stop list
+  // shows); at the last stop, when arriving.
+  const delayMs =
+    stop.depMs !== null && stop.schedDepMs !== null
+      ? stop.depMs - stop.schedDepMs
+      : stop.arrMs !== null && stop.schedArrMs !== null
+        ? stop.arrMs - stop.schedArrMs
+        : 0;
+  return { state, next, delaySec: delayMs / 1000 };
+}

@@ -1,0 +1,3323 @@
+/* Colours and font from www.pangwayne.com: dark header and footer with the mint accent, and the panels in
+   the site's dark palette whatever the device's setting (decision 2026-11-02: the dashboard is dark). */
+:root {
+  color-scheme: dark;
+  --font-sans: "Hanken Grotesk Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+
+  --head-bg: #0b0e18;
+  --head-ink: #f1f3f7;
+  --head-soft: #b8bfcc;
+  --head-border: #ffffff14;
+  --mint: #3ee6c1;
+  --mint-dark: #2fd0ad;
+  --on-mint: #11131a;
+
+  --surface: #141826;
+  --ink: #f1f3f7;
+  --ink-soft: #b8bfcc;
+  --accent: #3ee6c1;
+  --border: #ffffff14;
+  --hover: #3ee6c114;
+  --ok: #6fdc8c;
+  --slight: #f0d060;
+  --late: #f5a524;
+  --verylate: #f2978f;
+
+  font-family: var(--font-sans);
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  background: var(--head-bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.site-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  background: var(--head-bg);
+  color: var(--head-ink);
+  border-bottom: 1px solid var(--head-border);
+}
+
+.site-header :focus-visible {
+  outline-color: var(--mint);
+}
+
+/* Wide enough for the status line in two lines; the search gives way first. */
+.app-title {
+  flex: 1;
+  min-width: 190px;
+}
+
+.app-title h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+/* Up to two lines, so the hint and long stop names are not cut off where the header is narrow. */
+#status {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--head-soft);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+/* Stop search: a field in the header, results drop down over the map. Search, Route and My location look
+   alike (same height, same outline), so none of the three stands out (decision 2026-11-01). */
+.search {
+  position: relative;
+  flex: 0 1 240px;
+  min-width: 140px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--head-soft);
+  pointer-events: none;
+}
+
+#search {
+  box-sizing: border-box;
+  width: 100%;
+  height: 38px;
+  padding: 0 12px 0 38px;
+  border: 1px solid var(--head-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--head-ink);
+  font: inherit;
+  font-size: 14px;
+}
+
+#search::placeholder {
+  color: var(--head-soft);
+}
+
+/* While the field is empty its clear button is invisible but keeps its room, which cut "Suchen" on 320 px phones. */
+#search:placeholder-shown::-webkit-search-cancel-button {
+  display: none;
+}
+
+#search:focus {
+  outline: none;
+  border-color: var(--mint);
+  box-shadow: 0 0 0 3px rgba(62, 230, 193, 0.18);
+}
+
+#search-results {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 10; /* above the map controls and the departure board */
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+}
+
+#search-results[hidden] {
+  display: none;
+}
+
+.search-result {
+  padding: 9px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.search-result:hover,
+.search-result.active {
+  background: var(--hover);
+}
+
+.search-note {
+  padding: 9px 10px;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.nav-right {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Route planner and My location: outlined pills with icon and name, like the search field. */
+#near-me,
+#route-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--head-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--head-ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+#near-me:hover,
+#route-btn:hover {
+  border-color: var(--head-soft);
+  background: #ffffff14;
+}
+
+#near-me svg,
+#route-btn svg {
+  flex: none;
+  color: var(--mint);
+}
+
+.near-short {
+  display: none;
+}
+
+/* Same pill as the language switch on www.pangwayne.com: the flag and code of the other language. */
+.lang-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 44px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--head-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--head-soft);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.lang-toggle:hover {
+  border-color: var(--head-soft);
+  color: var(--head-ink);
+}
+
+.lang-flag {
+  display: block;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px #fff3;
+}
+
+html[lang="de"] .flag-de,
+html[lang="en"] .flag-en {
+  display: none;
+}
+
+/* Between the phone layout and 900 px: Route and My location go icon-only (their names stay as tooltip and
+   screen-reader label), both alike. */
+@media (min-width: 700px) and (max-width: 900px) {
+  #near-me .near-text,
+  #route-btn .near-text {
+    display: none;
+  }
+
+  #near-me,
+  #route-btn {
+    width: 40px;
+    padding: 0;
+  }
+}
+
+/* Phones: portrait only. Rows: portrait, title and buttons; then the status line; then the search.
+   Same width as the panel's phone layout (NARROW_PX in panel.ts and map.ts): between 641 and 699 px the
+   one-row header did not fit and the page scrolled sideways. */
+@media (max-width: 699px) {
+  .site-header {
+    flex-wrap: wrap;
+    gap: 8px 10px;
+    padding: 8px 12px 10px;
+  }
+
+  .app-title {
+    display: contents; /* its title and status line take part in the header's rows */
+  }
+
+  .app-title h1 {
+    flex: 1;
+    min-width: 0;
+  }
+
+  #status {
+    order: 1;
+    flex: 1 0 100%;
+    margin: -4px 0 0;
+  }
+
+  /* Its buttons take part in the header's rows too: the language switch next to the title, Route and My
+     location next to the search, three equal parts. */
+  .nav-right {
+    display: contents;
+  }
+
+  .search {
+    order: 2;
+    flex: 1 1 0;
+    min-width: 0;
+    transition: flex-grow 0.2s;
+  }
+
+  #route-btn {
+    order: 3;
+  }
+
+  #near-me {
+    order: 4;
+  }
+
+  #route-btn,
+  #near-me {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 42px;
+    padding: 0; /* centred anyway; side padding would make them wider than the search's third */
+    font-size: 13px;
+  }
+
+  .near-long {
+    display: none;
+  }
+
+  .near-short {
+    display: inline;
+  }
+
+  /* Typing: the search takes most of the row, the two buttons keep just their icons. */
+  .search:focus-within {
+    flex-grow: 3;
+  }
+
+  .site-header:has(.search:focus-within) .near-text {
+    display: none;
+  }
+
+  #search {
+    height: 42px;
+    padding: 0 4px 0 30px; /* a third of the row: room for "Suchen", also at 320 px */
+    font-size: 16px; /* 16px stops iPhones zooming in on focus */
+  }
+
+  .search-icon {
+    left: 8px;
+  }
+
+  /* "Nahverkehr Pünktlichkeits-Check" in two lines next to the buttons, not three. */
+  .app-title h1 {
+    font-size: 15.5px;
+  }
+
+  #status {
+    font-size: 12px;
+  }
+}
+
+/* The narrowest phones (320 px): the language switch shows just its code. */
+@media (max-width: 400px) {
+  .lang-toggle .lang-flag {
+    display: none;
+  }
+}
+
+/* Phones with the panel open: the status line repeats the panel's title, so it gives its room to the map.
+   An empty full-width item takes its place in the order, so the search row still starts on its own line. */
+@media (max-width: 699px) {
+  body.panel-open #status {
+    display: none;
+  }
+
+  body.panel-open .site-header::before {
+    content: "";
+    order: 1;
+    flex: 1 0 100%;
+    height: 0;
+  }
+}
+
+#map-wrap {
+  flex: 1;
+  position: relative;
+  display: flex;
+  min-height: 0;
+}
+
+/* The map and the passenger panel (board, trip card, route form). Next to the live column on wide screens,
+   the whole width under the live bar on phones. */
+#map-area {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+#map {
+  position: absolute;
+  inset: 0;
+}
+
+/* Shown in place of the map when it cannot start. */
+.map-failed {
+  max-width: 420px;
+  margin: 48px auto;
+  padding: 0 16px;
+  color: var(--ink);
+  font-size: 15px;
+  text-align: center;
+}
+
+/* Shown instead of the map without JavaScript (index.html, de/index.html). */
+.no-js-note {
+  position: relative;
+  max-width: 520px;
+  margin: 48px auto;
+  padding: 0 16px;
+  color: var(--ink);
+  font-size: 15px;
+  text-align: center;
+}
+
+.no-js-note a {
+  color: var(--mint);
+}
+
+/* Departure board: a sheet over the bottom of the map on phones, a card on wide screens. */
+#board {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 50%;
+  overflow-y: auto;
+  z-index: 3; /* above MapLibre's controls and credits (z-index 2) */
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.25);
+  padding: 0 16px; /* no bottom padding: the trip card's sticky footer must sit flush with the edge */
+}
+
+#board[hidden] {
+  display: none;
+}
+
+/* Phones: the route form and its connections need more room than half the screen (a 640px phone fit no
+   whole connection). A connection's details keep the half sheet, so the route stays visible on the map. */
+@media (max-width: 699px) {
+  #board:has(.route-results) {
+    max-height: 70%;
+  }
+
+  /* "Liste größer": most of the screen, the map still peeking out above. */
+  #board.tall {
+    max-height: 88%;
+  }
+
+  /* The title, the stop's buttons and the line filter take about 150 px before the first departure. */
+  #board .board-head {
+    padding: 10px 0 6px;
+  }
+}
+
+/* Short phones (320 x 568 and the like): half the map's height left no complete departure under the buttons.
+   The sheet starts larger (two departures at 320 x 568); the map keeps a strip of about 120 px above it for
+   the stop. The line filter sits closer to the rows. */
+@media (max-width: 699px) and (max-height: 760px) {
+  #board {
+    max-height: 70%;
+  }
+
+  #board .line-filter {
+    margin: 0 0 2px;
+    padding: 2px 0 4px;
+  }
+}
+
+/* The narrowest phones: a row's small line (vehicle, platform, the neighbouring stop) stays on one line, cut
+   with "..." (screen readers still get all of it), and the sheet's two buttons are a little smaller. With
+   these, two whole departures fit under the buttons at 320 x 568. */
+@media (max-width: 360px) {
+  .row .dest small {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  #board #board-close,
+  #board #board-grow {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+/* 320 x 568: two departures whose names take two lines each need a few more pixels. */
+@media (max-width: 360px) and (max-height: 600px) {
+  #board {
+    max-height: 72%;
+  }
+}
+
+/* Phones on their side (short screens): a bottom sheet would leave one departure, or none. The panel becomes
+   a card on the left that takes the map's full height, like on a desktop (panel.ts sees the shape and keeps
+   fitted things to its right). #map-wrap: wins over the phone sheet's own sizes. */
+@media (min-width: 700px) and (max-height: 500px), (orientation: landscape) and (max-height: 420px) {
+  #map-wrap #board {
+    left: 8px;
+    right: auto;
+    top: 6px;
+    bottom: 6px;
+    width: min(400px, 58%);
+    max-height: none;
+    border-radius: 16px;
+  }
+
+  #board #board-grow {
+    display: none;
+  }
+
+  #board .board-head {
+    padding: 8px 0 4px;
+  }
+
+  #board .line-filter {
+    margin: 0 0 2px;
+    padding: 2px 0 4px;
+  }
+}
+
+/* Small phones on their side (568 x 320): the header's two rows would take a third of the height. One row:
+   portrait, search, buttons; the title and status line give way (the panel names what is open). */
+@media (max-width: 699px) and (orientation: landscape) and (max-height: 420px) {
+  .site-header {
+    flex-wrap: nowrap;
+    padding: 6px 12px;
+  }
+
+  .app-title h1,
+  #status {
+    display: none;
+  }
+
+  .search {
+    order: 0;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  #search {
+    height: 38px;
+  }
+
+  /* Two lines of credits, not three (body: wins over the phone footer further down). */
+  body .site-footer {
+    column-gap: 8px;
+    font-size: 10px;
+    line-height: 22px;
+  }
+}
+
+/* The grow button only exists on phones; the card on wide screens has room. */
+#board-grow {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-left: auto;
+  border: 0;
+  border-radius: 10px;
+  background: var(--hover);
+  color: inherit;
+  cursor: pointer;
+}
+
+#board-grow svg {
+  transition: transform 0.2s;
+}
+
+#board.tall #board-grow svg {
+  transform: rotate(180deg);
+}
+
+@media (min-width: 700px) {
+  #board-grow {
+    display: none;
+  }
+}
+
+@media (min-width: 700px) {
+  #board {
+    left: 12px;
+    right: auto;
+    bottom: 36px;
+    width: 400px;
+    max-height: 70%;
+    border-radius: 16px;
+  }
+}
+
+.board-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 0 8px;
+  background: var(--surface);
+}
+
+.board-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+#board-close {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--hover);
+  color: inherit;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#board-close:hover {
+  background: color-mix(in srgb, var(--ink) 12%, transparent);
+}
+
+/* Line badges: the operator's colour, same size everywhere. */
+.line {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 44px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+/* A departure you can tap (a button): opens its trip card with route and vehicle. */
+.row.tappable {
+  box-sizing: border-box;
+  width: calc(100% + 16px);
+  margin: 0 -8px;
+  padding: 10px 8px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row.tappable:hover,
+.row.tappable:focus-visible {
+  background: var(--hover);
+}
+
+/* Same ring as every other control, drawn inside so the list does not clip it. */
+.row.tappable:focus-visible {
+  outline-offset: -3px;
+}
+
+.row .dest {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.dest-name {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.row .dest small {
+  margin-top: 1px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.row .when {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  white-space: nowrap;
+}
+
+.row .when b {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Live state under the countdown, and the chips on the trip card: coloured by punctuality. */
+.state {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ontime {
+  color: var(--ok);
+}
+
+.slight {
+  color: var(--slight);
+}
+
+.late {
+  color: var(--late);
+}
+
+.verylate {
+  color: var(--verylate);
+}
+
+.state.unknown {
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+
+.row.cancelled .dest-name,
+.row.cancelled .line,
+.row.cancelled .when b {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+.board-note {
+  margin: 8px 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.board-warn {
+  color: var(--late);
+}
+
+.board-error {
+  color: var(--verylate);
+  font-weight: 600;
+}
+
+/* "vor 8 s aktualisiert": green dot while fresh, red when old. */
+.panel-age {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 12px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.age-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+.panel-age.old {
+  color: var(--verylate);
+  font-weight: 600;
+}
+
+.panel-age.old .age-dot {
+  background: var(--verylate);
+}
+
+/* Trip card: chips, the estimated-position note, then the stops as a timeline. */
+.trip-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+
+.chip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.chip.unknown,
+.chip.where {
+  color: var(--ink);
+  background: var(--hover);
+  font-weight: 500;
+}
+
+.trip-estimate {
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+/* At least 32 px tall, so a thumb hits it without catching the line above (WCAG 2.5.8 asks for 24). */
+.link-button {
+  min-height: 32px;
+  border: none;
+  background: none;
+  padding: 4px 0;
+  margin: 0;
+  color: var(--accent);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.trip-stops {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+.trip-stop {
+  position: relative;
+  display: grid;
+  grid-template-columns: 44px 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  font-size: 14px;
+}
+
+/* The line between the dots, in the line's colour (set as --line on the list). */
+.trip-stop::before {
+  content: "";
+  position: absolute;
+  left: 58px; /* time column + gap + half the dot */
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--line, var(--ink-soft));
+}
+
+.trip-stop:first-child::before {
+  top: 50%;
+}
+
+.trip-stop:last-child::before {
+  bottom: 50%;
+}
+
+.trip-stop.passed::before {
+  background: var(--border);
+}
+
+.stop-dot {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  justify-self: center;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 3px solid var(--line, var(--ink-soft));
+}
+
+.trip-stop.passed .stop-dot {
+  background: var(--border);
+  border-color: transparent;
+}
+
+.trip-stop.next .stop-dot {
+  width: 14px;
+  height: 14px;
+  border-color: var(--ink);
+}
+
+.trip-stop .time {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A moved time: the planned one struck through above the expected one. */
+.trip-stop .time .route-clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.15;
+}
+
+.trip-stop .time b {
+  font-weight: inherit;
+}
+
+/* A button that looks like text: opens the stop's departure board. */
+.trip-stop .name {
+  padding: 8px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+}
+
+.trip-stop .name:hover,
+.trip-stop .name:focus-visible {
+  text-decoration: underline;
+}
+
+.trip-stop .name small {
+  color: var(--ink-soft);
+}
+
+.trip-stop .delay {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.trip-stop .delay.timetable {
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+
+.trip-stop.passed .time,
+.trip-stop.passed .name {
+  color: var(--ink-soft);
+}
+
+.trip-stop.next .time,
+.trip-stop.next .name {
+  font-weight: 700;
+}
+
+.trip-stop.cancelled .name {
+  text-decoration: line-through;
+}
+
+.trip-stop.cancelled .delay {
+  color: var(--verylate);
+}
+
+/* Data age and "Ganze Strecke zeigen" stay visible at the bottom while the stops scroll. */
+.trip-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin-top: 6px;
+  padding: 6px 0 10px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.trip-foot .panel-age {
+  margin: 0;
+}
+
+/* "You are here" for My location. Red, so it is not mistaken for a stop or a vehicle; above the stop glow. */
+.here {
+  z-index: 2;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #e53935;
+  border: 3px solid #ffffff;
+  box-shadow:
+    0 0 0 2px rgba(229, 57, 53, 0.45),
+    0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+/* Highlighted stops: a blue dot with a black outline, and a blue glow that grows and fades. Only transform and opacity change,
+   so the browser animates it without repainting the map. Taps go through to the stop underneath. */
+.stop-glow {
+  pointer-events: none;
+  width: 14px;
+  height: 14px;
+}
+.stop-glow::before,
+.stop-glow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: #1e88ff;
+}
+.stop-glow::before {
+  animation: stop-pulse 1.6s ease-out infinite;
+}
+.stop-glow::after {
+  border: 2px solid #000;
+  box-sizing: border-box;
+}
+@keyframes stop-pulse {
+  from {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(3.6);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stop-glow::before {
+    animation: none;
+    transform: scale(2);
+    opacity: 0.35;
+  }
+}
+
+/* Always-visible attribution (Transitous asks for a visible link, the map's own credits can collapse), and the
+   imprint and privacy links, which must be easy to find. Four groups with a dot between them; a line breaks
+   only between groups. */
+.site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  padding: 2px 16px;
+  background: var(--head-bg);
+  color: var(--head-soft);
+  border-top: 1px solid var(--head-border);
+  font-size: 12px;
+  line-height: 24px;
+}
+
+.footer-part {
+  white-space: nowrap;
+}
+
+.footer-part + .footer-part::before {
+  content: "\00a0·\00a0";
+}
+
+/* 24 px tall links, so a thumb can hit one without catching the line above or below (WCAG 2.5.8). */
+.site-footer a {
+  display: inline-block;
+  color: inherit;
+}
+
+/* Phones: imprint and privacy first, so they are on the first line; the rest wraps onto a second line
+   (nothing hides off-screen). */
+@media (max-width: 640px) {
+  .site-footer {
+    column-gap: 10px;
+    font-size: 11px;
+    line-height: 26px;
+    padding: 0 12px;
+  }
+
+  .footer-legal {
+    order: -1;
+  }
+
+  .footer-part + .footer-part::before {
+    content: none;
+  }
+}
+
+.site-footer a:hover {
+  color: var(--mint);
+}
+
+#status[data-freshness="stale"],
+#status[data-freshness="unavailable"] {
+  color: #f2978f;
+  font-weight: 600;
+}
+
+/* Read out by screen readers, not shown. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* "Route von hier" / "Route hierher" on a stop's board. */
+.board-route {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 6px;
+}
+
+/* Phones, and short screens on their side: one row that scrolls sideways (like the line filter), not two
+   rows above the departures. */
+@media (max-width: 699px), (min-width: 700px) and (max-height: 500px), (orientation: landscape) and (max-height: 420px) {
+  .board-route {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 6px;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .board-route > * {
+    flex: none;
+  }
+}
+
+/* "12 weitere Abfahrten" under the board's rows. */
+.board-more {
+  display: block;
+  min-height: 32px;
+  margin: 4px 0 0;
+}
+
+.board-route-btn {
+  min-height: 32px;
+  padding: 4px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.board-route-btn:hover {
+  background: var(--hover);
+}
+
+.board-route-btn[aria-pressed="true"] {
+  background: var(--hover);
+  border-style: dashed;
+}
+
+/* Short screens on their side: smaller buttons, so all four fit in the one row and Share stays in sight. */
+@media (min-width: 700px) and (max-height: 500px), (orientation: landscape) and (max-height: 420px) {
+  .board-route-btn {
+    min-height: 30px;
+    padding: 3px 10px;
+    font-size: 12px;
+  }
+}
+
+/* The form was edited but not searched yet: the connections are the previous search's, faded and labeled. */
+.route-previous .route-options,
+.route-previous .route-pager {
+  opacity: 0.5;
+}
+
+.route-previous-note {
+  padding: 6px 10px;
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  background: var(--hover);
+  color: var(--ink);
+}
+
+/* Route panel: From / To with the stop search, when, and the search button. */
+.route-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 8px;
+}
+
+.route-form[hidden],
+.route-fold[hidden] {
+  display: none;
+}
+
+/* The folded form: the search that was made, and "Ändern" to open the form again. */
+.route-fold {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--ink) 25%, transparent);
+  border-radius: 10px;
+  background: var(--hover);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.route-fold:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.route-fold-text {
+  min-width: 0;
+}
+
+.route-fold-action {
+  flex: none;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.route-label {
+  display: block;
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.route-row {
+  display: flex;
+  gap: 8px;
+}
+
+.route-input {
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--ink) 25%, transparent);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px; /* 16px stops iPhones zooming in on focus */
+}
+
+.route-input[aria-invalid="true"] {
+  border-color: var(--verylate);
+}
+
+.route-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--hover);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.route-icon:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+/* The stop list under a From / To field: in the flow of the panel, so it is never cut off. */
+.stop-list {
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.stop-list[hidden] {
+  display: none;
+}
+
+.route-when {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.route-modes {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--hover);
+}
+
+.route-mode {
+  position: relative;
+  display: inline-flex;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.route-mode input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.route-mode:has(input:checked) {
+  background: var(--accent);
+  color: var(--surface);
+}
+
+.route-mode:has(input:focus-visible) {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.route-moment {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.route-moment .route-input {
+  flex: 1 1 100px;
+}
+
+/* A full date ("25.10.2026" plus the calendar icon) needs about 150px; on narrow phones "Jetzt" moves to
+   its own row instead of squeezing the date. */
+.route-moment #route-date {
+  flex-basis: 150px;
+  min-width: 150px;
+}
+
+.route-now {
+  flex: none;
+  height: 42px;
+  padding: 0 14px;
+  border: 1px solid color-mix(in srgb, var(--ink) 25%, transparent);
+  border-radius: 10px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.route-now[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--hover);
+  color: var(--accent);
+}
+
+.route-error {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--verylate);
+}
+
+.route-error:empty {
+  display: none;
+}
+
+.route-error.note {
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+
+.route-here {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.route-here:empty {
+  display: none;
+}
+
+.route-here a {
+  color: var(--accent);
+}
+
+.route-rough {
+  color: var(--late);
+}
+
+.route-submit {
+  height: 44px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--surface);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.route-submit:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* Connections. */
+.route-heading {
+  margin: 12px 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.route-options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* A connection: a button (opens its details) laid out like a row, with the standard focus ring inside. */
+.route-option {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: calc(100% + 16px);
+  margin: 0 -8px;
+  padding: 10px 8px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.route-option:hover,
+.route-option:focus-visible {
+  background: var(--hover);
+}
+
+.route-option:focus-visible {
+  outline-offset: -3px;
+}
+
+.route-times {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.route-clock s {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.route-duration {
+  margin-left: auto;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.route-chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.route-sep {
+  color: var(--ink-soft);
+}
+
+.route-walk {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--hover);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.route-info {
+  display: block;
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.route-option.cancelled .route-times,
+.route-option.cancelled .route-chain {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+.route-pager {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+
+.route-page {
+  min-height: 36px;
+  padding: 4px 14px;
+  border: 1px solid color-mix(in srgb, var(--ink) 25%, transparent);
+  border-radius: 999px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.route-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* A connection's details: back link, summary, then the legs as a timeline (rides in their line's colour). */
+.route-back {
+  margin: 0 0 4px;
+}
+
+.route-summary {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.journey-legs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.journey-leg {
+  position: relative;
+}
+
+.journey-leg.walk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 6px 52px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.journey-stop {
+  display: grid;
+  grid-template-columns: 44px 14px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.journey-stop .route-clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.15;
+}
+
+.journey-stop-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--line, var(--ink-soft));
+  background: var(--surface);
+}
+
+.journey-stop-name {
+  font-weight: 600;
+}
+
+.journey-stop-name small {
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+
+/* The ride between its two stops: a thick line in the line's colour down the timeline. */
+.journey-ride {
+  margin: 0 0 0 57px; /* time column + gap + half the dot, minus half the line */
+  padding: 4px 0 4px 13px;
+  border-left: 4px solid var(--line, var(--ink-soft));
+}
+
+.journey-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 2px;
+  font-size: 14px;
+}
+
+.journey-headsign {
+  font-weight: 500;
+}
+
+.journey-seated {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.journey-leg.cancelled .journey-stop,
+.journey-leg.cancelled .journey-line {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+
+/* Board rows: the clock time (planned struck through when it moved) and the live state under the countdown. */
+.when-line {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.when-line .route-clock s {
+  font-size: 11px;
+}
+
+.when-line .route-clock b {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.row.cancelled .when-line .route-clock {
+  text-decoration: line-through;
+}
+
+.platform-change {
+  color: var(--late);
+  font-weight: 700;
+}
+
+.row-notice {
+  color: var(--late);
+  font-weight: 600;
+}
+
+/* The line filter above a board: the line badges as toggles in one row that scrolls sideways (a main
+   station has 30 lines). With some picked, the others fade. */
+.line-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 6px;
+  padding: 2px 0 6px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.line-filter > * {
+  flex: none;
+}
+
+.line-chip {
+  min-width: 40px;
+  height: 30px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.line-chip[aria-pressed="true"] {
+  border-color: var(--ink);
+}
+
+.line-filter.active .line-chip[aria-pressed="false"] {
+  opacity: 0.4;
+}
+
+.board-horizon {
+  margin: 8px 0 0;
+}
+
+/* Service notices: a header that opens to the full text. */
+.notices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+
+.notice {
+  padding: 6px 10px;
+  border-left: 4px solid var(--ink-soft);
+  border-radius: 6px;
+  background: var(--hover);
+  font-size: 13px;
+}
+
+.notice.warning {
+  border-left-color: var(--late);
+}
+
+.notice.severe {
+  border-left-color: var(--verylate);
+}
+
+.notice summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.notice.bare summary {
+  list-style: none;
+  cursor: default;
+}
+
+.notice p {
+  margin: 6px 0 2px;
+  white-space: pre-line;
+}
+
+.notice a {
+  color: var(--accent);
+}
+
+.notice-more {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+/* "Link kopiert" and the like, briefly at the bottom of the screen. */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 48px;
+  z-index: 20;
+  max-width: min(90vw, 420px);
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: var(--head-bg);
+  color: var(--head-ink);
+  font-size: 14px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 8px);
+  transition:
+    opacity 0.2s,
+    transform 0.2s;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* Search lists: a name, and under it what it is (address, saved route, ...). */
+.search-result {
+  display: flex;
+  flex-direction: column;
+}
+
+.search-sub {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.search-result.kind-action .search-label {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.stop-list .search-result {
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.stop-list .search-result:hover,
+.stop-list .search-result.active {
+  background: var(--hover);
+}
+
+/* A place picked from the search or held down on the map. */
+.place-pin {
+  width: 18px;
+  height: 18px;
+  border-radius: 50% 50% 50% 0;
+  background: var(--verylate);
+  border: 3px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  transform: rotate(-45deg);
+}
+
+.near-stops,
+.saved-routes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.near-stop,
+.saved-route {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: calc(100% + 16px);
+  min-height: 44px;
+  margin: 0 -8px;
+  padding: 8px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.near-stop:hover,
+.saved-route:hover {
+  background: var(--hover);
+}
+
+.near-stop small {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+/* Travel settings under "Optionen". */
+.route-prefs {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0 12px;
+}
+
+.route-prefs summary {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.route-prefs-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 0 12px;
+}
+
+.route-prefs-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.route-prefs-modes legend {
+  margin: 0 0 4px;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.pref-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.pref-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.pref-select {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.pref-select select {
+  font-weight: 400;
+}
+
+.route-prefs-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+/* Connections: the list's own sub-headings, and ones that have already left. */
+.route-subheading {
+  margin: 10px 0 2px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+}
+
+.route-options.past .route-option {
+  opacity: 0.6;
+}
+
+.route-options.pinned .route-option {
+  background: var(--hover);
+}
+
+/* A ride in the chain: vehicle icon, then the line badge. */
+.route-ride {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.mode-icon {
+  display: inline-flex;
+  color: var(--ink-soft);
+}
+
+/* Walks in a connection's details: the walk, the change it makes, the directions. */
+.journey-leg.walk {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.walk-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.walk-change,
+.journey-leg.change {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.journey-leg.change {
+  margin: 4px 0 4px 52px;
+}
+
+.walk-change.tight,
+.journey-leg.change.tight {
+  color: var(--late);
+}
+
+.walk-change.missed,
+.journey-leg.change.missed {
+  color: var(--verylate);
+}
+
+.walk-steps summary {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.walk-steps ol {
+  margin: 2px 0 4px;
+  padding-left: 20px;
+  color: var(--ink);
+}
+
+.walk-steps li.stairs,
+.walk-steps li.elevator {
+  font-weight: 700;
+}
+
+.route-changes {
+  margin: 0 0 8px;
+}
+
+/* Several small actions in a footer (refresh, share, save, whole route). */
+.foot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 14px;
+}
+
+.route-detail-foot {
+  flex-wrap: wrap;
+}
+
+/* Touch screens: MapLibre's zoom and compass buttons are 29 px and the line filter's chips 30 px, small for a
+   thumb. 40 px and 36 px (WCAG 2.5.8 asks 24 px; the platforms advise about 44 px). */
+@media (pointer: coarse) {
+  .maplibregl-ctrl-group button {
+    width: 40px;
+    height: 40px;
+  }
+
+  .line-chip {
+    height: 36px;
+    min-width: 44px;
+  }
+}
+
+/* "Live-Daten können von ... abweichen" under a board or a connection, with the link to the operator. */
+.data-note {
+  margin: 6px 0 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.data-note a {
+  color: inherit;
+}
+
+/* Live overview (livemap.ts). Phones and small tablets: a bar over the bottom of the map, folded to the
+   headline and a one-line legend, unfolding into a sheet. Wide screens: a column left of the map (RAIL_QUERY
+   in livemap.ts is the same query). Under the passenger panel (z-index 3), above MapLibre's controls. */
+#live {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  max-height: 65%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 8px 14px 10px;
+  border-radius: 16px 16px 0 0;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.22);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+#live[hidden] {
+  display: none;
+}
+
+/* Phones with a stop, trip or route open: that sheet takes the bottom. The overview shrinks to one line at
+   the top of the map (city, share punctual, median), so the finding never fully disappears. The query is
+   the opposite of RAIL_QUERY (livemap.ts): wide screens keep the column. */
+.live-strip.warn {
+  color: var(--late);
+}
+
+.live-strip {
+  display: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+@media (max-width: 899.98px), (max-height: 500.98px) {
+  body.panel-open #live {
+    top: 8px;
+    bottom: auto;
+    left: 8px;
+    right: auto;
+    max-width: calc(100% - 64px);
+    max-height: none;
+    padding: 4px 12px;
+    border-radius: 999px;
+    overflow: hidden;
+  }
+
+  body.panel-open #live > :not(.live-strip) {
+    display: none;
+  }
+
+  body.panel-open #live .live-strip {
+    display: block;
+  }
+}
+
+/* The map's scale and credits stay above the bar (livemap.ts measures it). */
+#map-area .maplibregl-ctrl-bottom-left,
+#map-area .maplibregl-ctrl-bottom-right {
+  bottom: var(--live-bar-h, 0px);
+}
+
+body.panel-open #map-area .maplibregl-ctrl-bottom-left,
+body.panel-open #map-area .maplibregl-ctrl-bottom-right {
+  bottom: 0;
+}
+
+@media (min-width: 900px) and (min-height: 501px) {
+  #live {
+    position: relative;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    flex: none;
+    width: 340px;
+    max-height: none;
+    padding: 16px 18px 18px;
+    border-radius: 0;
+    border-right: 1px solid var(--border);
+    box-shadow: none;
+    font-size: 13.5px;
+  }
+
+  body.panel-open #live {
+    display: block;
+  }
+
+  #map-area .maplibregl-ctrl-bottom-left,
+  #map-area .maplibregl-ctrl-bottom-right {
+    bottom: 0;
+  }
+}
+
+.live-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+#live .live-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+/* Unfolded (always on wide screens): the title takes its own row, the city buttons the next. */
+.live-cities {
+  display: flex;
+  gap: 5px;
+}
+
+#live:not(.folded) .live-cities {
+  order: 1;
+  flex: 1 0 100%;
+}
+
+/* Folded bar: no title (the header says what this is); pulse, city buttons and the unfold button in a row. */
+#live.folded .live-title {
+  display: none;
+}
+
+#live.folded .live-cities {
+  flex: 1;
+}
+
+.live-city {
+  flex: none;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.live-city:hover {
+  background: var(--hover);
+}
+
+.live-city[aria-pressed="true"] {
+  background: #fff;
+  border-color: #fff;
+  color: var(--surface);
+}
+
+/* City and kind buttons switch on and off: a check mark when on, so the state does not rest on color. */
+.live-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.live-toggle[aria-pressed="true"]::before {
+  content: "✓";
+  font-weight: 800;
+}
+
+.live-pulse {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #d32f2f;
+  animation: live-pulse 2s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-pulse {
+    animation: none;
+  }
+}
+
+.live-scope {
+  margin: 10px 0 2px;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+/* Folded: still says what the numbers cover (which area, which kinds), on one line. */
+#live.folded .live-scope {
+  margin: 4px 0 0;
+  overflow: hidden;
+  font-size: 11.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.live-headline {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  margin: 2px 0 2px;
+}
+
+#live.folded .live-headline {
+  margin-top: 6px;
+}
+
+.live-pct {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.live-pct[hidden] {
+  display: none;
+}
+
+.live-caption {
+  flex: 1 1 150px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* "80 % on time": with a share, the caption is part of the headline. */
+.live-pct:not([hidden]) + .live-caption {
+  flex: none;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+#live.folded .live-pct:not([hidden]) + .live-caption {
+  font-size: 18px;
+}
+
+#live.folded .live-pct {
+  font-size: 24px;
+}
+
+.live-health {
+  margin: 4px 0 8px;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+}
+
+.live-health[hidden] {
+  display: none;
+}
+
+/* The health line when the numbers are incomplete or old (a tile missing, a refresh failed). */
+.live-health.warn {
+  color: var(--late);
+  font-weight: 600;
+}
+
+#live.folded .live-health {
+  margin-bottom: 4px;
+}
+
+/* One-line legend for the folded bar. */
+.live-mini {
+  display: none;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  margin: 2px 0 0;
+  color: var(--ink-soft);
+  font-size: 11.5px;
+}
+
+#live.folded .live-mini {
+  display: flex;
+}
+
+.live-mini-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.live-mini-note {
+  white-space: nowrap;
+}
+
+.live-swatch {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1.5px solid #ffffff;
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.live-mini .live-swatch {
+  width: 9px;
+  height: 9px;
+}
+
+.live-fold {
+  flex: none;
+  width: 32px;
+  height: 30px;
+  margin-left: auto;
+  border: 0;
+  border-radius: 8px;
+  background: var(--hover);
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* The vehicles with live data by color: the same base as the headline and the table's shares. */
+.live-bar {
+  display: flex;
+  height: 12px;
+  margin: 2px 0 12px;
+  border-radius: 6px;
+  overflow: hidden;
+  gap: 1px;
+}
+
+.live-fold[hidden],
+.live-bar[hidden],
+.live-rows[hidden],
+.live-tip[hidden],
+.live-tiles[hidden],
+.live-delay-note[hidden],
+.live-hist-title[hidden],
+.live-ruler[hidden],
+.live-ruler-axis[hidden],
+.live-ruler-legend[hidden],
+.live-stuck[hidden],
+.live-sub[hidden],
+.live-worst[hidden],
+.live-body[hidden],
+.live-showall[hidden],
+.live-delays[hidden],
+.live-hist[hidden],
+.live-hist-title[hidden],
+.live-hist-axis[hidden] {
+  display: none;
+}
+
+/* Status · Vehicles · Share: the legend and the bar in numbers. */
+.live-dist {
+  width: 100%;
+  margin: 0 0 8px;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-dist th,
+.live-dist td {
+  padding: 3px 4px;
+  text-align: right;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.live-dist th:first-child {
+  text-align: left;
+}
+
+.live-dist tr:first-child th {
+  color: var(--ink-soft);
+  font-size: 11.5px;
+}
+
+.live-dist th[scope="row"] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.live-dist td:last-child {
+  width: 4.5em;
+}
+
+/* The total of the live rows: a line above it, and the timetable-only row below it apart. */
+.live-dist-total th,
+.live-dist-total td {
+  border-top: 1px solid var(--border);
+  font-weight: 600;
+}
+
+/* No swatch in the total row: its label lines up with the others (swatch 11 px + gap 8 px). */
+.live-dist-total th[scope="row"] {
+  padding-left: 23px;
+}
+
+/* The second part of the overview, "Delays": a heading like the headline's weight, then two numbers. */
+.live-delays {
+  margin: 16px 0 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.live-section {
+  margin: 0 0 8px;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.live-delay-lead {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.live-delay-note {
+  margin: 2px 0 6px;
+  color: var(--ink-soft);
+  font-size: 11.5px;
+}
+
+/* The minute ruler: a row per city, its name and median on a line of their own (never cut off), then the
+   track with the city's dot on the line, the bus icon above it and the tram icon below, apart even when all
+   three medians are the same minute. */
+.live-ruler-row {
+  margin-top: 4px;
+  font-size: 12.5px;
+}
+
+.live-ruler-name {
+  display: block;
+}
+
+.live-ruler-val {
+  margin-left: 6px;
+  color: var(--late);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-ruler-track {
+  position: relative;
+  height: 44px;
+  margin: 0 8px;
+}
+
+.live-ruler-track::before {
+  content: "";
+  position: absolute;
+  top: 21px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--border);
+}
+
+.live-ruler-dot {
+  position: absolute;
+  top: 16px;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  border-radius: 50%;
+  background: var(--late);
+}
+
+.live-ruler-dot.live-ruler-dot-key {
+  position: static;
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin: 0 4px 0 0;
+}
+
+.live-ruler-kind {
+  position: absolute;
+  margin-left: -7px;
+  line-height: 0;
+  color: var(--ink);
+}
+
+.live-ruler-bus {
+  top: 0;
+}
+
+.live-ruler-tram {
+  top: 30px;
+}
+
+.live-ruler-kind .live-kind-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.live-ruler-axis {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 8px;
+  color: var(--ink-soft);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-ruler-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 4px 0 6px;
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+.live-hist-title {
+  margin: 10px 0 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* Late vehicles by minutes late: one column per bin (2-5, 6-10, 11-15, 16-30, 31+), its count on top. */
+.live-hist {
+  display: flex;
+  gap: 6px;
+  height: 112px;
+}
+
+.live-hist-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.live-hist-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: stretch;
+}
+
+.live-hist-count {
+  color: var(--ink-soft);
+  font-size: 10.5px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-hist-bar {
+  display: block;
+  min-height: 0;
+  border-radius: 3px 3px 0 0;
+}
+
+.live-hist-min {
+  padding-top: 2px;
+  border-top: 1px solid var(--border);
+  color: var(--ink-soft);
+  font-size: 10.5px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-hist-axis {
+  margin: 2px 0 12px;
+  color: var(--ink-soft);
+  font-size: 11px;
+  text-align: center;
+}
+
+.live-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 12px;
+}
+
+.live-chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: transparent;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.live-chip[aria-pressed="true"] {
+  background: #fff;
+  border-color: #fff;
+  color: var(--surface);
+}
+
+.live-sub {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.live-worst {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+}
+
+.live-none {
+  color: var(--ink-soft);
+  padding: 2px 0 4px;
+}
+
+/* Under the city chart (what counts as on time) and the kinds table (the mix of kinds differs). */
+.live-compare-note {
+  margin: 4px 0 8px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.live-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 6px;
+  margin: 0 -6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.live-line:hover,
+.live-line[aria-pressed="true"] {
+  background: var(--hover);
+}
+
+/* The most delayed tram lines as a table: line, direction and next stop, delay (the column heads above). */
+.live-worst-head,
+.live-worst-row {
+  display: grid;
+  grid-template-columns: 3.2em 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.live-worst-head {
+  padding: 0 0 4px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--border);
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+.live-worst-head span:last-child {
+  text-align: right;
+}
+
+.live-worst-table li + li:not(.live-worst-head) {
+  border-top: 1px solid var(--border);
+}
+
+.live-worst-row {
+  padding: 6px;
+  border-radius: 0;
+}
+
+.live-worst-row .live-badge {
+  justify-self: start;
+}
+
+.live-worst-delay {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.live-badge {
+  flex: none;
+  min-width: 26px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 12px;
+  text-align: center;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+}
+
+/* Long stop names without a space ("Bundesrechnungshof/Auswärtiges") must wrap, not run into the delay. */
+.live-line-text {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+/* What stands out right now: plain-words findings, said only when the numbers clearly support them. */
+.live-findings {
+  margin: 0 0 10px;
+}
+
+.live-finding {
+  margin: 0 0 6px;
+  padding: 6px 8px;
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  background: var(--hover);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.live-share {
+  margin: 4px 0 10px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.live-findings[hidden],
+.live-share[hidden],
+.live-showall[hidden] {
+  display: none;
+}
+
+/* A city whose numbers come from an older answer (its refresh failed). */
+.live-compare-warn {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--late);
+}
+
+.live-share-link {
+  display: block;
+  margin: 4px 0 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12.5px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* A 60+ min delay: still counted, but probably a data error. */
+.live-unusual {
+  flex: none;
+  margin-left: auto;
+  padding: 0 5px;
+  border: 1px dashed var(--ink-soft);
+  border-radius: 6px;
+  color: var(--ink-soft);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.live-showall {
+  margin: 0 0 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12.5px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.live-notices .notices {
+  margin: 0 0 8px;
+}
+
+.live-notices .live-none {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+}
+
+/* The notices shown are an older answer: the latest refresh failed. */
+.live-notices .live-none.warn {
+  color: var(--late);
+  font-weight: 600;
+}
+
+/* A picked line (livemap.ts renderDetail): its vehicles on screen, each with its delay in words. */
+.live-detail {
+  margin: 0 0 8px;
+}
+
+.live-detail[hidden],
+.live-detail-range[hidden],
+.live-detail .live-none[hidden] {
+  display: none;
+}
+
+.live-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+#live .live-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+}
+
+.live-detail-head .live-showall {
+  margin: 0;
+}
+
+.live-detail-stats,
+.live-detail-range {
+  margin: 0 0 2px;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+}
+
+.live-veh-list {
+  list-style: none;
+  margin: 6px 0 4px;
+  padding: 0;
+}
+
+.live-veh {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 6px;
+  margin: 0 -6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.live-veh:hover {
+  background: var(--hover);
+}
+
+/* No map: the row opens nothing, so it does not look like a button. */
+.live-veh.static {
+  cursor: default;
+}
+
+.live-veh.static:hover {
+  background: transparent;
+}
+
+.live-veh-delay {
+  flex: none;
+  min-width: 82px;
+  font-size: 12.5px;
+}
+
+.live-veh-next {
+  min-width: 0;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.live-detail-note {
+  margin: 4px 0 8px;
+  color: var(--ink-soft);
+  font-size: 11.5px;
+}
+
+/* The folding rows at the top of the overview: about this project, how it works, credits. Each summary is
+   a full-width row with its own arrow (pointing right when closed, down when open). */
+.live-info {
+  margin: 0 0 12px;
+}
+
+/* Three tabs of exactly the same size, whatever their words (user decision 2026-11-04). */
+.live-info-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.live-info-tab {
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 6px;
+  border: 1px solid #ffffff2e;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.live-info-tab:hover {
+  background: var(--hover);
+}
+
+/* Open: a colored outline and text, plus a thicker line under it, so it is not told by color alone. */
+.live-info-tab[aria-expanded="true"] {
+  border-color: var(--mint);
+  box-shadow: inset 0 -2px 0 var(--mint);
+  background: var(--hover);
+  color: var(--mint);
+}
+
+@media (pointer: coarse) {
+  .live-info-tab {
+    min-height: 44px;
+  }
+}
+
+.live-info-panel {
+  margin: 10px 0 0;
+  padding: 0 0 2px;
+  border-bottom: 1px solid var(--border);
+}
+
+.live-info-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.live-info-more > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 0;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.live-info-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.live-info-more > summary::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin: 0 4px 0 2px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+}
+
+.live-info-more[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.live-info-panel p,
+.live-info-panel ul {
+  margin: 0 0 8px;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.live-info-panel ul {
+  padding-left: 18px;
+}
+
+.live-info-panel li {
+  margin: 0 0 4px;
+}
+
+.live-info-panel a {
+  color: var(--mint);
+}
+
+.live-info-more {
+  margin: 0 0 6px;
+}
+
+.live-info-more > summary {
+  padding: 2px 0 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+/* Bar rows (a city, or a kind): name, the bar by color, the share on time and how many live under it. */
+.live-body {
+  position: relative;
+}
+
+.live-rows {
+  margin: 0 0 10px;
+}
+
+/* A tile per kind (bus, tram): icon and name and the share on time big on the left, a small bar per city on
+   the right. */
+.live-tiles {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.live-tile {
+  display: grid;
+  grid-template-columns: 6.8em minmax(0, 1fr);
+  grid-template-rows: auto auto 1fr;
+  column-gap: 10px;
+  align-items: start;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff08;
+}
+
+.live-tile-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.live-tile-head .live-kind-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--ink);
+}
+
+.live-tile-pct {
+  margin: 4px 0 0;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-tile-rows {
+  grid-column: 2;
+  grid-row: 1 / 4;
+  align-self: center;
+}
+
+.live-tile-sub {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 10.5px;
+}
+
+.live-tile .live-row {
+  grid-template-columns: 5.2em 1fr 2.6em;
+  gap: 5px;
+  min-height: 20px;
+  font-size: 11px;
+}
+
+.live-tile .live-row:not(:has(.live-row-name:not(:empty))) {
+  grid-template-columns: 1fr 2.6em;
+}
+
+.live-tile .live-row-name:empty {
+  display: none;
+}
+
+.live-tile .live-row-sub {
+  display: none;
+}
+
+.live-tile .live-row-bar {
+  height: 6px;
+}
+
+/* Vehicles reporting 60+ min: a note under the most delayed. */
+.live-stuck {
+  margin: 8px 0 0;
+  padding: 6px 8px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--ink-soft);
+  font-size: 11.5px;
+}
+
+.live-stuck::before {
+  content: "⚠ ";
+  color: var(--slight);
+}
+
+/* A most delayed row with its direction: "→ Königsforst (Köln)" over the numbers. */
+.live-line-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.live-line-dest {
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.live-line-city {
+  color: var(--ink-soft);
+  font-weight: 400;
+}
+
+.live-row {
+  display: grid;
+  grid-template-columns: 6.5em 1fr 3.6em;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-row-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 4px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Older or incomplete data: a word under the name, readable without hovering. */
+.live-row-name .live-compare-warn {
+  flex-basis: 100%;
+}
+
+.live-row-bar {
+  margin: 0;
+}
+
+.live-row-val {
+  font-weight: 700;
+  text-align: right;
+  line-height: 1.1;
+}
+
+.live-row-sub {
+  display: block;
+  color: var(--ink-soft);
+  font-size: 10.5px;
+  font-weight: 400;
+}
+
+.live-row-why {
+  grid-column: 2 / 4;
+  color: var(--ink-soft);
+}
+
+.live-kind-icon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* What a part of a bar is, while the pointer is on it. */
+.live-tip {
+  position: absolute;
+  z-index: 3;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 8px #0000002e;
+}
+
+.live-bar > span {
+  cursor: default;
+}
+
+.live-compare-note[hidden],
+.live-finding[hidden] {
+  display: none;
+}
+

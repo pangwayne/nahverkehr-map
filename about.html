@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>About the Public Transport Punctuality Check: method and sources</title>
+    <meta
+      name="description"
+      content="How the Punctuality Check works out live delays for Bonn, Cologne and Düsseldorf: data sources, method, and what the numbers do not tell you."
+    />
+    <link rel="canonical" href="https://nahverkehr.pangwayne.com/about" />
+    <link rel="alternate" hreflang="en" href="https://nahverkehr.pangwayne.com/about" />
+    <link rel="alternate" hreflang="de" href="https://nahverkehr.pangwayne.com/de/ueber" />
+    <link rel="alternate" hreflang="x-default" href="https://nahverkehr.pangwayne.com/about" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Public Transport Punctuality Check" />
+    <meta property="og:locale" content="en_GB" />
+    <meta property="og:url" content="https://nahverkehr.pangwayne.com/about" />
+    <meta property="og:title" content="About the Public Transport Punctuality Check: method and sources" />
+    <meta
+      property="og:description"
+      content="How the Punctuality Check works out live delays for Bonn, Cologne and Düsseldorf: data sources, method, and what the numbers do not tell you."
+    />
+    <meta property="og:image" content="https://nahverkehr.pangwayne.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Public Transport Punctuality Check: colored lines and dots for punctual, slightly, more and very late vehicles" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <!-- Keep the date in step with "Last updated" below. The app itself is described in index.html. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "AboutPage",
+        "@id": "https://nahverkehr.pangwayne.com/about#page",
+        "url": "https://nahverkehr.pangwayne.com/about",
+        "name": "About the Public Transport Punctuality Check: method and sources",
+        "inLanguage": "en",
+        "dateModified": "2026-11-04",
+        "isPartOf": {
+          "@type": "WebSite",
+          "@id": "https://nahverkehr.pangwayne.com/#website",
+          "name": "Public Transport Punctuality Check",
+          "url": "https://nahverkehr.pangwayne.com/"
+        },
+        "about": {
+          "@type": "WebApplication",
+          "@id": "https://nahverkehr.pangwayne.com/#app",
+          "name": "Public Transport Punctuality Check",
+          "url": "https://nahverkehr.pangwayne.com/"
+        },
+        "author": {
+          "@type": "Person",
+          "@id": "https://www.pangwayne.com/#person",
+          "name": "Pang Wayne Wee",
+          "url": "https://www.pangwayne.com/"
+        }
+      }
+    </script>
+    <link rel="stylesheet" href="/src/web/legal.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="logo" href="/">Public Transport Punctuality Check</a>
+      <nav aria-label="Primary">
+        <a href="/">Live map</a>
+        <a href="https://www.pangwayne.com/imprint">Imprint</a>
+        <a href="/privacy">Privacy</a>
+      </nav>
+      <a href="/de/ueber" hreflang="de" lang="de" class="lang-toggle" aria-label="Auf Deutsch lesen">
+        <svg class="lang-flag" viewBox="0 0 5 3" width="20" height="12" aria-hidden="true"><rect width="5" height="1" fill="#000" /><rect y="1" width="5" height="1" fill="#D00" /><rect y="2" width="5" height="1" fill="#FFCE00" /></svg>DE
+      </a>
+    </header>
+    <main class="wrap">
+      <h1>About the Public Transport Punctuality Check</h1>
+      <p>Last updated: November 2026</p>
+
+      <p>
+        The Public Transport Punctuality Check shows live how punctual buses, trams and S-Bahn trains in Bonn, Cologne
+        and Düsseldorf are right now, worked out from public real-time data. It is an open-source personal project by
+        <a href="https://www.pangwayne.com/">Pang Wayne Wee</a>, free to use with no sign-up.
+      </p>
+      <p class="highlight"><a href="/">Open the live map</a></p>
+
+      <h2>What does the site show?</h2>
+      <ul>
+        <li>The buses, trams and S-Bahn trains in the public data on a map, colored by their current delay.</li>
+        <li>For each city, the share of vehicles on time and the median delay among late vehicles.</li>
+        <li>Bonn, Cologne and Düsseldorf side by side, also split by kind of vehicle.</li>
+        <li>Tram lines running late right now, and the vehicles of a line.</li>
+        <li>Live departures per stop and a route planner.</li>
+      </ul>
+
+      <h2>What does "on time" mean?</h2>
+      <p>On time means here: 1 minute late at most. Early counts as on time. The colors stand for:</p>
+      <ul>
+        <li>Green: 0-1 minute</li>
+        <li>Yellow: 2-5 minutes</li>
+        <li>Orange: 6-10 minutes</li>
+        <li>Red: 11+ minutes</li>
+        <li>Grey: no live data, timetable only</li>
+      </ul>
+      <p>The color belongs to the vehicle, not the track: a red line is not a traffic jam but a late vehicle on its way.</p>
+
+      <h2>How are the numbers worked out?</h2>
+      <ul>
+        <li>They describe the whole area inside each city's official limits, whatever the map shows, and are reloaded every minute.</li>
+        <li>The percentage counts only vehicles with live data. Under 10 of those, there is no percentage.</li>
+        <li>The median delay counts only the late vehicles (2+ minutes): half of them are less late, half more. It appears from 10 late vehicles on.</li>
+        <li>Reports of 60 minutes or more are left out as potentially unreliable; some may be genuine delays. These vehicles stay on the map but are not in any number, and a note says how many there are. In a big disruption this can make the on-time share look better than it is.</li>
+      </ul>
+
+      <h2>Which vehicles count?</h2>
+      <p>
+        Buses, trams (tram, Stadtbahn, U-Bahn) and S-Bahn trains of the operators in the three cities, such as KVB in
+        Cologne, Stadtwerke Bonn (SWB) and Rheinbahn in Düsseldorf. Regional trains (RB, RE) show as pale circles on the map but
+        are not counted: a late train passing through would otherwise move a whole city's numbers. The same goes for
+        rail replacement buses named after a train line.
+      </p>
+
+      <h2>Are the vehicle positions real?</h2>
+      <p>
+        No, they are estimates, worked out from the timetable and the live times, not GPS. If 40% of the time between
+        two stops has passed, the dot sits 40% along that stretch. The dots move every second; new data comes every
+        1-2 minutes.
+      </p>
+
+      <h2>What do the numbers not tell you?</h2>
+      <p>
+        They are a snapshot, not a punctuality statistic. They cannot tell you whether one city is generally more
+        punctual than another. No historical transit data is collected or stored. Cancellations are not counted: a
+        missing dot does not mean a trip is cancelled. All information without guarantee.
+      </p>
+
+      <h2>Where does the data come from?</h2>
+      <p>
+        Live data and timetables come from <a href="https://transitous.org">Transitous</a>, a free, open-source service,
+        and its <a href="https://transitous.org/sources/">data sources</a>. Map data ©
+        <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>, map:
+        <a href="https://openfreemap.org">OpenFreeMap</a>. The source code is
+        <a href="https://github.com/pangwayne/nahverkehr-map">on GitHub</a> (MIT license).
+      </p>
+    </main>
+  </body>
+</html>

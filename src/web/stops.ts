@@ -1,0 +1,273 @@
+// Turns Transitous platforms into stations, and finds the stations near a point.
+// Pure functions only (no DOM, no fetch).
+
+import type { StopPlace } from "./api";
+import { type LonLat, distanceM } from "./geo";
+import { plateName, townName } from "./names";
+import { isAreaStopId } from "../worker/transitous";
+
+const GERMAN_PREFIX = "de-DELFI_";
+
+// Some stations exist under two IDs with the same name (Bonn Hbf does). Merge those when this close.
+const SAME_NAME_MERGE_M = 400;
+
+// Any kind of train: S-Bahn, regional, long-distance, night. Drawn as a bigger dot on the map.
+const TRAIN_MODES = new Set<string>([
+  "SUBURBAN",
+  "REGIONAL_RAIL",
+  "REGIONAL_FAST_RAIL",
+  "RAIL",
+  "LONG_DISTANCE",
+  "HIGHSPEED_RAIL",
+  "NIGHT_RAIL",
+]);
+
+export interface Station {
+  id: string; // e.g. "de:05314:61101" (Bonn Hbf)
+  // The other IDs of same-name stations merged into this one (Köln Hbf: "de:05315:11201_G"). Links and saved
+  // stops may name any of them: which one became `id` used to follow the stop list's order, which changes.
+  aliases: string[];
+  name: string;
+  lon: number;
+  lat: number;
+  stopIds: string[]; // its platforms; asking for any one returns the whole station
+  planStopId: string; // what a route search sends for this station: a stop ID or a position (planStopId below)
+  hasTram: boolean;
+  hasTrain: boolean;
+}
+
+export interface NearStation {
+  station: Station;
+  distanceM: number;
+}
+
+// German stop IDs carry the station inside: "de:05314:61101:2:64" = station "de:05314:61101",
+// area 2, platform 64. IDs without that shape stay a station of their own.
+export function stationKey(stopId: string): string | null {
+  if (!stopId.startsWith(GERMAN_PREFIX)) return null;
+  const local = stopId.slice(GERMAN_PREFIX.length);
+  const parts = local.split(":");
+  return parts.length >= 3 ? parts.slice(0, 3).join(":") : local;
+}
+
+// Group platforms into stations. Non-German duplicates (e.g. a Belgian "Bonn Hbf") are dropped,
+// and same-name stations close together become one. A station sits at the average of its platforms.
+export function groupStations(places: StopPlace[]): Station[] {
+  const groups = new Map<string, StopPlace[]>();
+  for (const p of places) {
+    const key = stationKey(p.stopId);
+    if (key === null) continue;
+    const list = groups.get(key);
+    if (list) list.push(p);
+    else groups.set(key, [p]);
+  }
+
+  // Looked up by name: comparing every station with every other is too slow for ~7,000 stations on a phone.
+  const merged: { ids: string[]; platforms: StopPlace[] }[] = [];
+  const byName = new Map<string, { ids: string[]; platforms: StopPlace[] }[]>();
+  for (const [id, platforms] of groups) {
+    const center = average(platforms);
+    const name = platforms[0]!.name;
+    const sameName = byName.get(name) ?? [];
+    const twin = sameName.find((m) => distanceM(average(m.platforms), center) <= SAME_NAME_MERGE_M);
+    if (twin) {
+      twin.ids.push(id);
+      twin.platforms.push(...platforms);
+      continue;
+    }
+    const entry = { ids: [id], platforms: [...platforms] };
+    merged.push(entry);
+    sameName.push(entry);
+    byName.set(name, sameName);
+  }
+
+  return merged.map(({ ids, platforms }) => {
+    const [lon, lat] = average(platforms);
+    // One ID names the station whatever order the stop list comes in, so links stay the same: the smallest
+    // of the usual "de:..." IDs (Bonn Hbf: "de:05314:61101", not the merged tram stop "D_000000000687").
+    const [id, ...aliases] = [...ids].sort(byStationId);
+    return {
+      id: id!,
+      aliases,
+      name: platforms[0]!.name,
+      lon,
+      lat,
+      stopIds: platforms.map((p) => p.stopId),
+      // A merged station is searched by whichever of its IDs is a stop of its own (Köln Hbf: not the "_G").
+      planStopId: planStopId([id!, ...aliases].find((i) => hasOwnStop(i, platforms)) ?? id!, platforms, [lon, lat]),
+      hasTram: platforms.some((p) => p.modes?.some((m) => m === "TRAM" || m === "SUBWAY") ?? false),
+      hasTrain: platforms.some((p) => p.modes?.some((m) => TRAIN_MODES.has(m)) ?? false),
+    };
+  });
+}
+
+// What a route search sends for a station: the station's own ID when the stop list has it (Transitous then
+// plans to any of its platforms), else the platform nearest to its middle. Transitous answers 404 for station
+// IDs that are not in the list, so we never make one up (checked 2026-10-24). Only IDs the Worker takes for
+// route searches count (isAreaStopId: a district of the area); a station without one (22 in 2026-10, such as
+// "D_000000018173" in Meerbusch or the KD piers) is sent as its position, like an address.
+const hasOwnStop = (stationId: string, platforms: StopPlace[]): boolean =>
+  platforms.some((p) => p.stopId === GERMAN_PREFIX + stationId && isAreaStopId(p.stopId));
+
+export function planStopId(stationId: string, platforms: StopPlace[], center: LonLat): string {
+  if (hasOwnStop(stationId, platforms)) return GERMAN_PREFIX + stationId;
+  let best: StopPlace | null = null;
+  for (const p of platforms) {
+    if (!isAreaStopId(p.stopId)) continue;
+    if (!best || distanceM(center, [p.lon, p.lat]) < distanceM(center, [best.lon, best.lat])) best = p;
+  }
+  return best?.stopId ?? `${center[1].toFixed(6)},${center[0].toFixed(6)}`;
+}
+
+// "de:..." IDs first, then in plain character order.
+function byStationId(x: string, y: string): number {
+  const usual = Number(!x.startsWith("de:")) - Number(!y.startsWith("de:"));
+  return usual || (x < y ? -1 : x > y ? 1 : 0);
+}
+
+function average(places: StopPlace[]): LonLat {
+  return [
+    places.reduce((sum, p) => sum + p.lon, 0) / places.length,
+    places.reduce((sum, p) => sum + p.lat, 0) / places.length,
+  ];
+}
+
+// The station a link or saved stop names: by its ID, or by one of the IDs merged into it.
+export function findStation(stations: Station[], id: string): Station | null {
+  return stations.find((s) => s.id === id || s.aliases.includes(id)) ?? null;
+}
+
+// Every ID a station goes by (its own first).
+export const stationIds = (s: Station): string[] => [s.id, ...s.aliases];
+
+// A stop from somewhere else (e.g. a stop on a trip's route) -> our station for it: by platform ID,
+// else the nearest station with the same name within `maxM` meters. Null if there is none.
+export function matchStation(
+  stations: Station[],
+  stop: { stopId: string | null; name: string; lon: number; lat: number },
+  maxM = 300,
+): Station | null {
+  if (stop.stopId) {
+    const byId = stations.find((s) => s.stopIds.includes(stop.stopId!));
+    if (byId) return byId;
+  }
+  const here: LonLat = [stop.lon, stop.lat];
+  let best: Station | null = null;
+  let bestM = maxM;
+  for (const s of stations) {
+    if (s.name !== stop.name) continue;
+    const d = distanceM(here, [s.lon, s.lat]);
+    if (d <= bestM) {
+      best = s;
+      bestM = d;
+    }
+  }
+  return best;
+}
+
+// The closest stations within `maxM` meters, nearest first, at most `limit`.
+export function nearestStations(
+  stations: Station[],
+  lon: number,
+  lat: number,
+  maxM: number,
+  limit: number,
+): NearStation[] {
+  const here: LonLat = [lon, lat];
+  return stations
+    .map((station) => ({ station, distanceM: distanceM(here, [station.lon, station.lat]) }))
+    .filter((s) => s.distanceM <= maxM)
+    .sort((a, b) => a.distanceM - b.distanceM)
+    .slice(0, limit);
+}
+
+// Short forms used in stop names, so "Hauptbahnhof" finds "Bonn Hbf" and "Straße" finds "Str.". Also the
+// English words a visitor may type ("cologne main station" finds "Köln Hbf"). Applied after the umlaut
+// rule below, so the long forms are written without "ae/oe/ue".
+const SHORT_FORMS: [string, string][] = [
+  ["hauptbahnhof", "hbf"],
+  ["main station", "hbf"],
+  ["central station", "hbf"],
+  ["bahnhof", "bf"],
+  ["strasse", "str"],
+  ["platz", "pl"],
+  ["cologne", "koln"],
+];
+
+// Lower case, no accents ("ü" -> "u", "ß" -> "ss"), long words shortened like in the stop names.
+// "ae/oe/ue" count as "ä/ö/ü" (keyboards without umlauts: "koeln" finds Köln). Names go through the same
+// rule, so a name really spelled with "ue" ("Kuenstr.") still matches what is typed.
+export function searchText(text: string): string {
+  let s = text.toLowerCase().replace(/ß/g, "ss").normalize("NFD").replace(/[̀-ͯ]/g, "");
+  s = s.replace(/([aou])e/g, "$1");
+  for (const [long, short] of SHORT_FORMS) s = s.replaceAll(long, short);
+  return s;
+}
+
+function words(text: string): string[] {
+  return text.split(/[^a-z0-9]+/).filter(Boolean);
+}
+
+// The ways one typed word can appear in a stop name: itself, or the short form of a word being typed
+// ("hauptbah" may become "hbf").
+function variants(typed: string): string[] {
+  const out = [typed];
+  if (typed.length >= 4) {
+    // Two-word forms only count once typed in full: "main" alone must not find every "Hbf".
+    for (const [long, short] of SHORT_FORMS) if (!long.includes(" ") && long.startsWith(typed)) out.push(short);
+  }
+  return out;
+}
+
+// What a station can be found by: its name, with the plate ("K Neumarkt") and with the town spelled
+// out ("Düsseldorf Wehrhahn" for "D-Wehrhahn S"). Worked out once per station, not on every key press.
+const searchIndex = new WeakMap<Station, { text: string; words: string[]; compact: string }>();
+
+function searchable(station: Station): { text: string; words: string[]; compact: string } {
+  let entry = searchIndex.get(station);
+  if (!entry) {
+    const forms = new Set([station.name, plateName(station.name), townName(station.name)]);
+    const text = [...forms].map(searchText).join(" ");
+    entry = { text, words: words(text), compact: words(searchText(station.name)).join("") };
+    searchIndex.set(station, entry);
+  }
+  return entry;
+}
+
+// Typed words that belong together count extra when the name has them as one word: "beethoven haus" is the
+// stop "Beethovenhaus", not "Deichhaus Beethovenstr." (which merely contains both).
+const JOINED_MIN = 6;
+
+// Stations whose name contains every typed word, best first: a whole name word beats a name word
+// starting with the typed word, which beats one containing it; then shorter names. The town counts like any other word,
+// so "bonn hbf" finds Bonn Hbf and not Köln Hbf.
+export function searchStations(stations: Station[], query: string, limit: number): Station[] {
+  const typed = words(searchText(query));
+  if (typed.length === 0) return [];
+
+  const hits: { station: Station; rank: number }[] = [];
+  for (const station of stations) {
+    const { text: name, words: nameWords } = searchable(station);
+    let rank = 0;
+    let ok = true;
+    for (const [i, w] of typed.entries()) {
+      const forms = variants(w);
+      const atStart = forms.some((f) => nameWords.some((nw) => nw.startsWith(f)));
+      if (!atStart && !forms.some((f) => f.length >= 3 && name.includes(f))) {
+        ok = false;
+        break;
+      }
+      if (!atStart) rank += i === 0 ? 2 : 1;
+      else if (!forms.some((f) => nameWords.includes(f))) rank += 0.5; // "k" is the whole plate in K-Neumarkt, only the start of Kuhweg
+    }
+    if (!ok) continue;
+    const { compact } = searchable(station);
+    const pairs = typed.slice(1).map((w, i) => typed[i]! + w);
+    if (pairs.some((p) => p.length >= JOINED_MIN && compact.includes(p))) rank -= 1;
+    hits.push({ station, rank });
+  }
+  return hits
+    .sort((a, b) => a.rank - b.rank || a.station.name.length - b.station.name.length || a.station.name.localeCompare(b.station.name))
+    .slice(0, limit)
+    .map((h) => h.station);
+}

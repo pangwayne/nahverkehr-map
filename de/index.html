@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta name="theme-color" content="#0b0e18" />
+    <meta
+      name="description"
+      content="Wie pünktlich sind Busse und Bahnen in Bonn, Köln und Düsseldorf gerade? Live-Verspätungen auf der Karte, Stadtvergleich, Abfahrten und Routensuche."
+    />
+    <title>Nahverkehr live: Verspätungen in Bonn, Köln und Düsseldorf</title>
+    <link rel="canonical" href="https://nahverkehr.pangwayne.com/de/" />
+    <link rel="alternate" hreflang="en" href="https://nahverkehr.pangwayne.com/" />
+    <link rel="alternate" hreflang="de" href="https://nahverkehr.pangwayne.com/de/" />
+    <link rel="alternate" hreflang="x-default" href="https://nahverkehr.pangwayne.com/" />
+    <!-- Link previews (pangwayne.com, LinkedIn, chat apps): title, text and a picture without live numbers. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Nahverkehr Pünktlichkeits-Check" />
+    <meta property="og:locale" content="de_DE" />
+    <meta property="og:url" content="https://nahverkehr.pangwayne.com/de/" />
+    <meta property="og:title" content="Nahverkehr Pünktlichkeits-Check: Bonn, Köln, Düsseldorf" />
+    <meta
+      property="og:description"
+      content="Gemeldete Live-Verspätungen für Busse, Bahnen und S-Bahnen, Stadt für Stadt, aus öffentlichen Echtzeitdaten."
+    />
+    <meta property="og:image" content="https://nahverkehr.pangwayne.com/og-image-de.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Nahverkehr Pünktlichkeits-Check: farbige Linien und Punkte für pünktliche sowie leicht, stärker und stark verspätete Fahrzeuge" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <!-- What this site is, for search engines and AI answers. The page's CSP does not apply: this is data, it never runs.
+         Keep it in step with what the page shows. No ratings or reviews: there are none. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://nahverkehr.pangwayne.com/#website",
+            "url": "https://nahverkehr.pangwayne.com/",
+            "name": "Public Transport Punctuality Check",
+            "alternateName": "Nahverkehr Pünktlichkeits-Check",
+            "inLanguage": ["en", "de"],
+            "publisher": { "@id": "https://www.pangwayne.com/#person" }
+          },
+          {
+            "@type": "WebApplication",
+            "@id": "https://nahverkehr.pangwayne.com/de/#app",
+            "url": "https://nahverkehr.pangwayne.com/de/",
+            "name": "Nahverkehr Pünktlichkeits-Check",
+            "description": "Zeigt live, wie pünktlich Busse, Bahnen und S-Bahnen in Bonn, Köln und Düsseldorf gerade sind, berechnet aus öffentlichen Echtzeitdaten. Eine Momentaufnahme, keine Pünktlichkeitsstatistik.",
+            "applicationCategory": "TravelApplication",
+            "operatingSystem": "Any",
+            "browserRequirements": "Requires JavaScript. The map needs WebGL.",
+            "isAccessibleForFree": true,
+            "inLanguage": "de",
+            "image": "https://nahverkehr.pangwayne.com/og-image-de.png",
+            "spatialCoverage": [
+              { "@type": "City", "name": "Bonn", "sameAs": "https://www.wikidata.org/wiki/Q586" },
+              { "@type": "City", "name": "Köln", "sameAs": "https://www.wikidata.org/wiki/Q365" },
+              { "@type": "City", "name": "Düsseldorf", "sameAs": "https://www.wikidata.org/wiki/Q1718" }
+            ],
+            "featureList": [
+              "Live-Karte der Busse, Bahnen und S-Bahnen aus den öffentlichen Daten, gefärbt nach Verspätung",
+              "Anteil pünktlicher Fahrzeuge und Median der Verspätung unter den verspäteten Fahrzeugen, je Stadt",
+              "Vergleich von Bonn, Köln und Düsseldorf",
+              "Abfahrten je Haltestelle",
+              "Routensuche"
+            ],
+            "isBasedOn": ["https://transitous.org/", "https://www.openstreetmap.org/"],
+            "sameAs": "https://github.com/pangwayne/nahverkehr-map",
+            "isPartOf": { "@id": "https://nahverkehr.pangwayne.com/#website" },
+            "author": { "@id": "https://www.pangwayne.com/#person" }
+          },
+          {
+            "@type": "Person",
+            "@id": "https://www.pangwayne.com/#person",
+            "name": "Pang Wayne Wee",
+            "url": "https://www.pangwayne.com/"
+          }
+        ]
+      }
+    </script>
+    <link rel="stylesheet" href="/src/web/style.css" />
+  </head>
+  <body>
+    <!-- Texts with data-t / data-t-label / data-t-title / data-t-placeholder / data-href are filled in by src/web/main.ts from src/web/i18n.ts. index.html is the same page in English: change both. -->
+    <header class="site-header">
+      <div class="app-title">
+        <h1 data-t="appTitle">Nahverkehr Pünktlichkeits-Check</h1>
+        <!-- The cities under the title (i18n "idle"); a stop or trip being loaded shows here for a moment. -->
+        <p id="status">Bonn · Köln · Düsseldorf</p>
+      </div>
+      <div class="search" role="search">
+        <svg class="search-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m20 20-3.5-3.5" />
+        </svg>
+        <input id="search" type="search" autocomplete="off" spellcheck="false" enterkeyhint="search"
+          role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="search-results"
+          data-t-label="searchLabel" aria-label="Haltestelle oder Adresse suchen" data-t-placeholder="searchPlaceholder" placeholder="Suchen" />
+        <ul id="search-results" role="listbox" hidden></ul>
+      </div>
+      <div class="nav-right">
+        <button id="route-btn" type="button" data-t-label="routeButtonLabel" aria-label="Route planen" data-t-title="routeButtonLabel" title="Route planen">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="6" cy="19" r="2" />
+            <circle cx="18" cy="5" r="2" />
+            <path d="M8 19h7.5a3.5 3.5 0 0 0 0-7h-7a3.5 3.5 0 0 1 0-7H16" />
+          </svg>
+          <span class="near-text" data-t="routeButton">Route</span>
+        </button>
+        <button id="near-me" type="button" data-t-label="nearMeLabel" aria-label="Mein Standort: Haltestellen in der Nähe zeigen">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+            <circle cx="12" cy="12" r="6" />
+            <circle cx="12" cy="12" r="2" />
+          </svg>
+          <span class="near-text near-long" data-t="nearMe">Mein Standort</span>
+          <span class="near-text near-short" data-t="nearMeShort">Standort</span>
+        </button>
+        <a id="lang" href="/" hreflang="en" lang="en" class="lang-toggle" data-t-label="switchLabel" aria-label="Read in English">
+          <svg class="lang-flag flag-en" viewBox="0 0 60 36" width="20" height="12" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <clipPath id="uk-flag-t"><path d="M30,18 h30 v18 z v18 h-30 z h-30 v-18 z v-18 h30 z" /></clipPath>
+            <rect width="60" height="36" fill="#012169" />
+            <path d="M0,0 L60,36 M60,0 L0,36" stroke="#fff" stroke-width="7" />
+            <path d="M0,0 L60,36 M60,0 L0,36" clip-path="url(#uk-flag-t)" stroke="#C8102E" stroke-width="4" />
+            <path d="M30,0 v36 M0,18 h60" stroke="#fff" stroke-width="12" />
+            <path d="M30,0 v36 M0,18 h60" stroke="#C8102E" stroke-width="7" />
+          </svg>
+          <svg class="lang-flag flag-de" viewBox="0 0 5 3" width="20" height="12" aria-hidden="true">
+            <rect width="5" height="1" fill="#000" />
+            <rect y="1" width="5" height="1" fill="#D00" />
+            <rect y="2" width="5" height="1" fill="#FFCE00" />
+          </svg>
+          <span data-t="switchTo">EN</span>
+        </a>
+      </div>
+    </header>
+    <!-- The main landmark holds the live overview, the map and the departure board / trip card. -->
+    <main id="map-wrap">
+      <!-- Live overview: a column next to the map on wide screens, a bar over its bottom on phones
+           (filled in by src/web/livemap.ts). -->
+      <section id="live" aria-label="Live" hidden></section>
+      <div id="map-area">
+        <!-- For browsers without JavaScript and crawlers that do not run it: what this is, and where the text is. -->
+        <noscript>
+          <div class="no-js-note">
+            <p>Der Nahverkehr Pünktlichkeits-Check zeigt live, wie pünktlich Busse, Bahnen und S-Bahnen in Bonn, Köln und Düsseldorf gerade sind. Die Karte und die Zahlen brauchen JavaScript.</p>
+            <p><a href="/de/ueber">Über das Projekt und die Methode</a> · <a href="/about" hreflang="en" lang="en">About this project in English</a></p>
+          </div>
+        </noscript>
+        <div id="map"></div>
+        <section id="board" aria-labelledby="board-title" hidden>
+          <div class="board-head">
+            <h2 id="board-title" tabindex="-1" aria-live="polite"></h2>
+            <!-- Phones: makes the sheet taller or smaller again (label set by src/web/panel.ts). -->
+            <button id="board-grow" type="button" aria-expanded="false" aria-label="Liste größer">
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m6 15 6-6 6 6" />
+              </svg>
+            </button>
+            <button id="board-close" type="button" data-t-label="close" aria-label="Schließen">×</button>
+          </div>
+          <div id="board-body"></div>
+        </section>
+      </div>
+    </main>
+    <footer class="site-footer">
+      <span class="footer-part"><a href="/de/ueber" target="_blank" rel="noopener" data-t="footerAbout" data-href="aboutUrl">Über das Projekt</a></span>
+      <span class="footer-part"><span data-t="footerData">Daten</span>:
+        <a href="https://transitous.org/sources/" target="_blank" rel="noopener" data-t="footerSources">Transitous-Quellen</a></span>
+      <span class="footer-part">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>
+        · <a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a></span>
+      <span class="footer-part"><a href="https://github.com/pangwayne/nahverkehr-map" target="_blank" rel="noopener" data-t="footerSource">Quellcode</a>
+        · <a href="/licenses.md" target="_blank" rel="noopener" data-t="footerLicenses">Lizenzen</a></span>
+      <span class="footer-part footer-legal"><a href="https://www.pangwayne.com/de/impressum" target="_blank" rel="noopener" data-t="footerImprint" data-href="imprintUrl">Impressum</a>
+        · <a href="/de/datenschutzerklaerung" target="_blank" rel="noopener" data-t="footerPrivacy" data-href="privacyUrl">Datenschutz</a></span>
+    </footer>
+    <script type="module" src="/src/web/main.ts"></script>
+  </body>
+</html>

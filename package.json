@@ -1,0 +1,30 @@
+{
+  "name": "nahverkehr-map",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Live punctuality of buses and trains in Bonn, Köln and Düsseldorf, on a map. Open-source personal project.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "wrangler types && tsc -p tsconfig.web.json && tsc -p tsconfig.worker.json",
+    "build": "npm run typecheck && vite build",
+    "preview": "npm run build && vite preview",
+    "deploy": "npm run build && wrangler deploy",
+    "cf-typegen": "wrangler types"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.64.0",
+    "@types/geojson": "^7946.0.16",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "wrangler": "^4.151.2"
+  },
+  "dependencies": {
+    "@fontsource-variable/hanken-grotesk": "^5.3.0",
+    "maplibre-gl": "^6.12.0"
+  },
+  "overrides": {
+    "undici": "^7.30.1"
+  }
+}

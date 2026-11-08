@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://nahverkehr.pangwayne.com/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://nahverkehr.pangwayne.com/" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://nahverkehr.pangwayne.com/de/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nahverkehr.pangwayne.com/" />
+  </url>
+  <url>
+    <loc>https://nahverkehr.pangwayne.com/de/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://nahverkehr.pangwayne.com/" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://nahverkehr.pangwayne.com/de/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nahverkehr.pangwayne.com/" />
+  </url>
+  <url>
+    <loc>https://nahverkehr.pangwayne.com/about</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://nahverkehr.pangwayne.com/about" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://nahverkehr.pangwayne.com/de/ueber" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nahverkehr.pangwayne.com/about" />
+  </url>
+  <url>
+    <loc>https://nahverkehr.pangwayne.com/de/ueber</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://nahverkehr.pangwayne.com/about" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://nahverkehr.pangwayne.com/de/ueber" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nahverkehr.pangwayne.com/about" />
+  </url>
+</urlset>

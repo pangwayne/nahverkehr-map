@@ -1,0 +1,23 @@
+# Same policy as www.pangwayne.com. AI search and user-initiated agents fall under "everyone else".
+# /api/ is not content, and most of it costs upstream requests. Only /api/city stays open: search engines
+# need it to draw the page, and it is one shared answer per minute.
+
+# AI training and related AI uses (Google-Extended also covers Gemini grounding; it and Applebot-Extended are
+# permission switches, not crawlers): allowed on content, not on legal pages
+User-agent: GPTBot
+User-agent: ClaudeBot
+User-agent: Google-Extended
+User-agent: Applebot-Extended
+User-agent: CCBot
+Disallow: /api/
+Disallow: /licenses.md
+Disallow: /privacy
+Disallow: /de/datenschutzerklaerung
+
+# Everyone else
+User-agent: *
+Allow: /api/city
+Disallow: /api/
+Disallow: /licenses.md
+
+Sitemap: https://nahverkehr.pangwayne.com/sitemap.xml
