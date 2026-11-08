@@ -353,3 +353,20 @@ export function buildPlanUrl(q: PlanQuery): string {
   if (q.cursor) params.set("pageCursor", q.cursor);
   return `${TRANSITOUS_BASE}/api/v6/plan?${params.toString()}`;
 }
+
+// Only what looks like a whole JSON answer is kept and shared: not empty, not huge (the stop list, the biggest,
+// is about 4 MB), starting with { or [ and ending with } or ]. An HTML error page sent with status 200 or a cut-off
+// body is handled like an outage instead of being stored for everyone. No parsing, so it stays cheap.
+export const MAX_UPSTREAM_BYTES = 8 * 1024 * 1024;
+export function looksLikeJson(body: ArrayBuffer): boolean {
+  if (body.byteLength === 0 || body.byteLength > MAX_UPSTREAM_BYTES) return false;
+  const bytes = new Uint8Array(body);
+  const space = (b: number) => b === 0x20 || b === 0x09 || b === 0x0a || b === 0x0d;
+  let i = 0;
+  while (i < bytes.length && space(bytes[i]!)) i++;
+  let j = bytes.length - 1;
+  while (j > i && space(bytes[j]!)) j--;
+  const first = bytes[i];
+  const last = bytes[j];
+  return (first === 0x7b && last === 0x7d) || (first === 0x5b && last === 0x5d); // {...} or [...]
+}
