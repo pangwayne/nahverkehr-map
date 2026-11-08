@@ -58,11 +58,6 @@ export { DELAY_COLORS, type DelayClass, delayClass, roundedClass, wholeMinutes }
 export const UNUSUAL_DELAY_SEC = 60 * 60;
 export const isUnusual = (v: { delaySec: number; realTime: boolean }): boolean => v.realTime && v.delaySec >= UNUSUAL_DELAY_SEC;
 
-// From this many 60+ min reports, the line under the headline says how many were left out (user decision
-// 2026-11-04). The note under the list says it from the first one.
-export const LEFT_OUT_LINE_MIN = 10;
-export const showsLeftOut = (unusual: number): boolean => unusual >= LEFT_OUT_LINE_MIN;
-
 // Fewer live vehicles than this: no share and no median, only counts (one vehicle would swing it too much).
 export const MIN_LIVE_FOR_SHARE = 10;
 

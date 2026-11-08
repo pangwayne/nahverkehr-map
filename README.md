@@ -62,7 +62,7 @@ npm run deploy     # build + deploy to Cloudflare (needs `npx wrangler login` on
   (2+ min) are, as a median from 10 of them on and by minutes late; and the 5 most delayed tram lines. That
   list has one row per line, 2+ min late: the next vehicle of the line's most delayed direction, so a vehicle
   further behind can be later than its row says (directions come from a few `/api/trip` requests). A vehicle
-  reporting 60+ min stays on the map but is left out of every number, and a note says how many there are (from 10 of them on, the line under the headline says so too). Each
+  reporting 60+ min stays on the map but is left out of every number, and a note under the list says how many there are. Each
   city's numbers come from that city's own answer only: moving the map never changes them. An answer is used
   only once it was fully read; when it is old, its refresh failed or more than 10 % of its entries were
   unreadable, every part of the overview says so, and no comparison is drawn from it. Tap a line to see its

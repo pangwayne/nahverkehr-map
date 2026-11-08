@@ -31,7 +31,6 @@ import {
   isUnusual,
   lookupFailed,
   retryDue,
-  showsLeftOut,
   MIN_LIVE_FOR_SHARE,
   lineDetail,
   lineKeyOf,
@@ -709,7 +708,6 @@ export function startLiveMap(map: maplibregl.Map | null, onVehicleTap: (ref: Tri
     const detail = [
       enough ? tx.liveBase(sum.live) : tx.liveCoverage(sum.live, sum.vehicles),
       enough && unknown ? tx.liveTimetableOnly(unknown) : null,
-      showsLeftOut(a.unusual) ? tx.liveLeftOut(a.unusual) : null,
       dropped,
       tx.updated(ageS),
       warning,
@@ -880,12 +878,15 @@ export function startLiveMap(map: maplibregl.Map | null, onVehicleTap: (ref: Tri
     ui.findings.hidden = !quiet;
   }
 
-  // "Live data available: Bus 74 % · Bahn 95 % · S-Bahn 88 %" for the chosen kinds in the city.
+  // "Live data available: Bus 74 % · Bahn 95 % · S-Bahn 8 of 9" for the chosen kinds in the city. A share
+  // from 10 vehicles on, like the headline; below that the counts (8 of 8 is no "100 %").
   function renderLiveShare(ready: boolean): void {
     const tx = t();
     const by = liveByGroup(counted);
     const items = ALL_GROUPS.filter((g) => filters.groups.has(g) && by[g].vehicles > 0).map((g) =>
-      tx.liveShareItem(groupName(g), Math.round((by[g].live / by[g].vehicles) * 100)),
+      by[g].vehicles >= MIN_LIVE_FOR_SHARE
+        ? tx.liveShareItem(groupName(g), Math.round((by[g].live / by[g].vehicles) * 100))
+        : tx.liveShareCount(groupName(g), by[g].live, by[g].vehicles),
     );
     ui.liveShare.textContent = ready && items.length ? `${tx.liveShareTitle}: ${items.join(" · ")}` : "";
     ui.liveShare.hidden = ui.liveShare.textContent === "";
