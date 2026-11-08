@@ -74,15 +74,15 @@ const SECURITY_HEADERS: Record<string, string> = {
   "Permissions-Policy": "geolocation=(self), camera=(), microphone=(), payment=(), usb=()",
 };
 
-// What a page may load: our own files, OpenFreeMap (tiles, fonts, icons) and the portrait on
-// www.pangwayne.com. MapLibre needs blob: for its worker and images. The nonce lets Cloudflare's injected
-// bot-check script run (Cloudflare copies it from this header), while any other inline script is blocked.
+// What a page may load: our own files and OpenFreeMap (tiles, fonts, icons). MapLibre needs blob: for its
+// worker and images. The nonce lets Cloudflare's injected bot-check script run (Cloudflare copies it from
+// this header), while any other inline script is blocked.
 export function contentSecurityPolicy(nonce: string): string {
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}'`,
     "style-src 'self'",
-    "img-src 'self' data: blob: https://tiles.openfreemap.org https://www.pangwayne.com",
+    "img-src 'self' data: blob: https://tiles.openfreemap.org",
     "connect-src 'self' https://tiles.openfreemap.org",
     "worker-src 'self' blob:",
     "object-src 'none'",

@@ -268,7 +268,7 @@ html[lang="en"] .flag-en {
   }
 }
 
-/* Phones: portrait only. Rows: portrait, title and buttons; then the status line; then the search.
+/* Phones held upright. Rows: title and buttons; then the status line; then the search.
    Same width as the panel's phone layout (NARROW_PX in panel.ts and map.ts): between 641 and 699 px the
    one-row header did not fit and the page scrolled sideways. */
 @media (max-width: 699px) {
@@ -532,7 +532,7 @@ html[lang="en"] .flag-en {
 }
 
 /* Small phones on their side (568 x 320): the header's two rows would take a third of the height. One row:
-   portrait, search, buttons; the title and status line give way (the panel names what is open). */
+   search and buttons; the title and status line give way (the panel names what is open). */
 @media (max-width: 699px) and (orientation: landscape) and (max-height: 420px) {
   .site-header {
     flex-wrap: nowrap;
