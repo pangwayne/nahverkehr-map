@@ -11,8 +11,9 @@ if (!import.meta.env.DEV) maplibregl.setWorkerUrl(workerUrl);
 // Free vector tiles, no key or sign-up. Attribution for OSM/OpenFreeMap comes from the style itself.
 const STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 
-// First visit: Bonn Hauptbahnhof area. MapLibre uses [lon, lat].
-const BONN_CENTER: [number, number] = [7.0982, 50.7374];
+// First visit: Köln, around the cathedral and the main station (DEFAULT_CITY in cities.ts is the same city).
+// MapLibre uses [lon, lat].
+const START_CENTER: [number, number] = [6.9583, 50.9413];
 const START_ZOOM = 13;
 const NARROW_PX = 700; // the same width as the panel's phone layout
 
@@ -40,7 +41,7 @@ function savedView(): View | null {
     if (Math.abs(lon!) > 180 || Math.abs(lat!) > 85 || zoom! < 0 || zoom! > 22) return null;
     return { center: [lon!, lat!], zoom: zoom! };
   } catch {
-    return null; // storage blocked (private mode, say) or broken: start at Bonn
+    return null; // storage blocked (private mode, say) or broken: start at Köln
   }
 }
 
@@ -50,7 +51,7 @@ function saveView(map: maplibregl.Map): void {
   try {
     sessionStorage.setItem(VIEW_KEY, JSON.stringify([round(c.lng), round(c.lat), Math.round(map.getZoom() * 100) / 100]));
   } catch {
-    // Storage blocked: a reload starts at Bonn again.
+    // Storage blocked: a reload starts at Köln again.
   }
 }
 
@@ -69,7 +70,7 @@ export function createMap(container: HTMLElement): maplibregl.Map {
   const map = new maplibregl.Map({
     container,
     style: STYLE_URL,
-    center: view?.center ?? BONN_CENTER,
+    center: view?.center ?? START_CENTER,
     zoom: view?.zoom ?? START_ZOOM,
     attributionControl: false, // added below, in the page's language
   });

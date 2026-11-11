@@ -29,6 +29,8 @@ function boxAround(ring: [number, number][]): Box {
 }
 
 export const CITY_IDS: CityId[] = ["bonn", "koeln", "duesseldorf"];
+// The city a first visit shows: its numbers in the overview, and the map starts there (map.ts).
+export const DEFAULT_CITY: CityId = "koeln";
 export const CITY_BOXES: Record<CityId, Box> = {
   bonn: boxAround(CITY_LIMITS.bonn),
   koeln: boxAround(CITY_LIMITS.koeln),

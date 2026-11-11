@@ -360,13 +360,6 @@ html[lang="en"] .flag-en {
   }
 }
 
-/* The narrowest phones (320 px): the language switch shows just its code. */
-@media (max-width: 400px) {
-  .lang-toggle .lang-flag {
-    display: none;
-  }
-}
-
 /* Phones with the panel open: the status line repeats the panel's title, so it gives its room to the map.
    An empty full-width item takes its place in the order, so the search row still starts on its own line. */
 @media (max-width: 699px) {
@@ -2249,9 +2242,34 @@ body.panel-open #map-area .maplibregl-ctrl-bottom-right {
 
 .live-head {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+/* Phones, sheet open: the title row stays at the top while the rest scrolls, so the fold button is always in
+   reach. It spans the sheet's full width and covers what scrolls under it, the sheet's 8 px top padding
+   included (hence top: -8px). */
+@media (max-width: 899.98px), (max-height: 500.98px) {
+  #live:not(.folded) .live-head {
+    position: sticky;
+    top: -8px;
+    z-index: 2;
+    margin: 0 -14px;
+    padding: 8px 14px 4px;
+    background: var(--surface);
+  }
+}
+
+/* Folded bar: no title (the header says what this is). Only the unfold button is left of the row; it sits at
+   the right of the city buttons, which keep room for it. */
+#live.folded .live-head {
+  position: absolute;
+  top: 8px;
+  right: 14px;
+}
+
+#live.folded .live-head .live-pulse {
+  display: none;
 }
 
 #live .live-title {
@@ -2267,21 +2285,19 @@ body.panel-open #map-area .maplibregl-ctrl-bottom-right {
 /* Unfolded (always on wide screens): the title takes its own row, the city buttons the next. */
 .live-cities {
   display: flex;
+  flex-wrap: wrap;
   gap: 5px;
+  margin-top: 8px;
 }
 
-#live:not(.folded) .live-cities {
-  order: 1;
-  flex: 1 0 100%;
-}
-
-/* Folded bar: no title (the header says what this is); pulse, city buttons and the unfold button in a row. */
 #live.folded .live-title {
   display: none;
 }
 
 #live.folded .live-cities {
-  flex: 1;
+  align-items: center;
+  min-height: 44px;
+  margin: 0 52px 0 0;
 }
 
 .live-city {
@@ -2296,6 +2312,25 @@ body.panel-open #map-area .maplibregl-ctrl-bottom-right {
   font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
+}
+
+/* The bar and the sheet (phones), and any touch screen: three buttons side by side, so a miss switches the
+   wrong city. 40 px, not 44: the folded bar takes its height from the map. */
+@media (max-width: 899.98px), (max-height: 500.98px), (pointer: coarse) {
+  .live-city {
+    height: 40px;
+  }
+}
+
+/* The narrowest phones (320 px): all three switched on still fit next to the unfold button. */
+@media (max-width: 340px) {
+  .live-cities {
+    gap: 4px;
+  }
+
+  .live-city {
+    padding: 0 8px;
+  }
 }
 
 .live-city:hover {
@@ -2320,13 +2355,29 @@ body.panel-open #map-area .maplibregl-ctrl-bottom-right {
   font-weight: 800;
 }
 
+/* The status dot (livemap.ts sets data-state): mint and pulsing while the numbers are fresh, amber and still
+   when they are old or the refresh is paused, red when loading failed, grey while the first answer loads.
+   Not the red it once was: red means "11+ min late" and "warning" everywhere else here. */
 .live-pulse {
   flex: none;
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: #d32f2f;
+  background: var(--ink-soft);
+}
+
+#live[data-state="live"] .live-pulse {
+  background: var(--mint);
   animation: live-pulse 2s ease-in-out infinite;
+}
+
+#live[data-state="old"] .live-pulse,
+#live[data-state="paused"] .live-pulse {
+  background: var(--late);
+}
+
+#live[data-state="failed"] .live-pulse {
+  background: #ef5350;
 }
 
 @keyframes live-pulse {
@@ -2336,9 +2387,24 @@ body.panel-open #map-area .maplibregl-ctrl-bottom-right {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .live-pulse {
+  #live .live-pulse {
     animation: none;
   }
+}
+
+/* The dot and its word in the scope line: only in the folded bar, where the title row's dot is gone. */
+.live-scope .live-pulse,
+.live-word {
+  display: none;
+}
+
+.live-word {
+  color: var(--mint);
+  font-weight: 600;
+}
+
+#live[data-state="paused"] .live-word {
+  color: var(--late);
 }
 
 .live-scope {
@@ -2349,10 +2415,26 @@ body.panel-open #map-area .maplibregl-ctrl-bottom-right {
 
 /* Folded: still says what the numbers cover (which area, which kinds), on one line. */
 #live.folded .live-scope {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 4px 0 0;
-  overflow: hidden;
   font-size: 11.5px;
   white-space: nowrap;
+}
+
+#live.folded .live-scope .live-pulse,
+#live.folded .live-word:not([hidden]) {
+  display: block;
+}
+
+#live.folded .live-word:not([hidden]) + .live-scope-text::before {
+  content: "· ";
+}
+
+#live.folded .live-scope-text {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
 }
 
@@ -2460,17 +2542,29 @@ body.panel-open #map-area .maplibregl-ctrl-bottom-right {
   height: 9px;
 }
 
+/* Phones only (hidden in the column). 44 px: the size Apple and Google ask for a thumb. */
 .live-fold {
   flex: none;
-  width: 32px;
-  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
   margin-left: auto;
+  padding: 0;
   border: 0;
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--hover);
   color: var(--ink);
-  font-size: 13px;
   cursor: pointer;
+}
+
+.live-fold svg {
+  transition: transform 0.2s;
+}
+
+.live-fold[aria-expanded="true"] svg {
+  transform: rotate(180deg);
 }
 
 /* The vehicles with live data by color: the same base as the headline and the table's shares. */

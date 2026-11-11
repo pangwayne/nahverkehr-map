@@ -5,7 +5,7 @@
 // end up in the hosting logs. It is still readable by whoever gets the link.
 
 import { isInArea, isValidTripId } from "../worker/transitous";
-import { CITY_IDS, type CityId, isCityId } from "./cities";
+import { CITY_IDS, type CityId, DEFAULT_CITY, isCityId } from "./cities";
 import { ALL_GROUPS, type ModeGroup } from "./fleet";
 
 // A stop (our station ID, e.g. "de:05314:61101"), a named point (an address, a landmark, a point picked on
@@ -121,10 +121,14 @@ function readRoute(params: URLSearchParams): RouteRef | null {
   return { from, to, time, arriveBy: arr === "1", prefs, ...(page ? { page } : {}) };
 }
 
-// The part after "#" for a view ("" for none, and for views that cannot go into a link). Version 1.
+// Commas and colons stay readable in the address ("city=bonn,koeln", "stop=de:05314:61101"): both are allowed
+// after "#", and reading a link back takes them either way.
+const tidy = (params: URLSearchParams): string => params.toString().replaceAll("%2C", ",").replaceAll("%3A", ":");
+
+// The part after "#" for a view ("" for none, and for views that cannot go into a link).
 export function viewHash(view: View | null): string {
   if (!view || view.kind === "near") return "";
-  const params = new URLSearchParams({ v: "1" });
+  const params = new URLSearchParams();
   switch (view.kind) {
     case "stop":
       params.set("stop", view.id);
@@ -147,15 +151,14 @@ export function viewHash(view: View | null): string {
       params.set("j", view.key);
       break;
   }
-  return params.toString();
+  return tidy(params);
 }
 
-// A view from the part after "#", or null when it is empty, from another version, or anything in it is wrong.
+// A view from the part after "#", or null when it is empty or anything in it is wrong.
 export function parseViewHash(hash: string): View | null {
   const text = hash.startsWith("#") ? hash.slice(1) : hash;
   if (!text || text.length > 2000) return null;
   const params = new URLSearchParams(text);
-  if (params.get("v") !== "1") return null;
   const stop = params.get("stop");
   if (stop !== null) return isStationId(stop) ? { kind: "stop", id: stop } : null;
   const trip = params.get("trip");
@@ -182,8 +185,8 @@ export function parseViewHash(hash: string): View | null {
 
 // The live overview as a link: the chosen cities ("bonn,koeln"), the chosen kinds of vehicles (left out when
 // all) and a picked line ("TRAM|16"). It opens the situation when it is opened, not the one the sender saw.
-// Version 1, like views; it has none of a view's keys, so the two never mix up. Older links say "all" for
-// the three cities, or name one; both still open.
+// It always names its cities and has none of a view's keys, so the two never mix up. "all" stands for the
+// three cities. The overview as a first visit shows it (DEFAULT_CITY, every kind, no line) needs no link: "".
 export interface LiveRef {
   cities: CityId[]; // at least one, in CITY_IDS order
   groups: ModeGroup[];
@@ -193,10 +196,12 @@ export interface LiveRef {
 const LINE_KEY = /^(TRAM|SUBWAY|BUS|SUBURBAN)\|(.{1,12})$/u;
 
 export function liveHash(ref: LiveRef): string {
-  const params = new URLSearchParams({ v: "1", city: CITY_IDS.filter((c) => ref.cities.includes(c)).join(",") });
-  if (ref.groups.length < ALL_GROUPS.length) params.set("kinds", ALL_GROUPS.filter((g) => ref.groups.includes(g)).join(","));
+  const allKinds = ref.groups.length >= ALL_GROUPS.length;
+  if (ref.cities.length === 1 && ref.cities[0] === DEFAULT_CITY && allKinds && !ref.line) return "";
+  const params = new URLSearchParams({ city: CITY_IDS.filter((c) => ref.cities.includes(c)).join(",") });
+  if (!allKinds) params.set("kinds", ALL_GROUPS.filter((g) => ref.groups.includes(g)).join(","));
   if (ref.line) params.set("line", ref.line);
-  return params.toString();
+  return tidy(params);
 }
 
 // A live overview link from the part after "#", or null when it is not one or anything in it is wrong.
@@ -205,7 +210,7 @@ export function parseLiveHash(hash: string): LiveRef | null {
   if (!text || text.length > 200) return null;
   const params = new URLSearchParams(text);
   const city = params.get("city");
-  if (params.get("v") !== "1" || city === null) return null;
+  if (city === null) return null;
   const named = city === "all" ? [...CITY_IDS] : city.split(",");
   if (!named.length || new Set(named).size !== named.length || !named.every(isCityId)) return null;
   const cities = CITY_IDS.filter((c) => named.includes(c));

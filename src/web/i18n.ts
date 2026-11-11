@@ -38,6 +38,8 @@ const de = {
     "Die Karte kann in diesem Browser nicht starten (WebGL ist aus oder fehlt). Die Zahlen zur Pünktlichkeit funktionieren trotzdem; Abfahrten, Fahrten und Routen brauchen die Karte.",
 
   liveTitle: "Live, gerade jetzt",
+  liveWord: "Live",
+  livePaused: "Pausiert",
   quietHours:
     "Gerade haben in jeder gewählten Stadt weniger als 10 Fahrzeuge der gewählten Arten Live-Daten, zu wenige für Prozentwerte. Nachts und früh morgens ist das normal; die Zahlen unten zeigen, was gerade unterwegs ist.",
   cityLabel: "Städte für die Zahlen wählen",
@@ -470,6 +472,8 @@ const en: typeof de = {
     "The map cannot start in this browser (WebGL is off or missing). The punctuality numbers still work; departures, trips and routes need the map.",
 
   liveTitle: "Live, right now",
+  liveWord: "Live",
+  livePaused: "Paused",
   quietHours:
     "Right now fewer than 10 vehicles of the chosen kinds have live data in each chosen city, too few for percentages. That is normal at night and early in the morning; the counts below show what is on the road.",
   cityLabel: "Choose the cities for the numbers",

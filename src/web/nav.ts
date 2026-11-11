@@ -7,8 +7,8 @@
 // Back leaves the site as expected instead of reopening things one by one.
 //
 // The live overview's state (city, kinds, picked line) is not a panel: changing it adds no entry. With no
-// panel open the address shows it (#v=1&city=...), so copying the address or reloading keeps it; every entry
-// also carries it, so a reload with a panel open keeps it too.
+// panel open the address shows it (#city=..., nothing for the overview as a first visit shows it), so copying
+// the address or reloading keeps it; every entry also carries it, so a reload with a panel open keeps it too.
 
 import { type LiveRef, type View, liveHash, parseLiveHash, parseViewHash, viewHash } from "./endpoints";
 
@@ -150,7 +150,7 @@ export function closeViews(): void {
     while (to > 0 && seen[to] !== null) to--; // unknown (after a reload) counts as a panel: on to depth 0
     closing = true;
     history.go(to - d);
-  } else if (location.hash !== (live ? `#${liveHash(live)}` : "")) {
+  } else if (`${location.pathname}${location.search}${location.hash}` !== urlFor(null)) {
     history.replaceState(entry(d, null), "", urlFor(null));
   }
 }

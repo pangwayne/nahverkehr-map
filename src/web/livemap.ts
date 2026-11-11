@@ -44,7 +44,7 @@ import {
   withSbahn,
   worstTramLines,
 } from "./fleet";
-import { CITIES, CITY_BOXES, CITY_IDS, type CityId, cityOf, coveredByCities } from "./cities";
+import { CITIES, CITY_BOXES, CITY_IDS, type CityId, DEFAULT_CITY, cityOf, coveredByCities } from "./cities";
 import { type LiveRef, liveHash } from "./endpoints";
 import { stopName } from "./names";
 import { onLiveLinkPasted, setLive } from "./nav";
@@ -73,6 +73,10 @@ const DIRECTION_FETCHES = 3; // destination lookups at once
 const DIRECTION_CACHE = 3000; // destinations kept (a trip never changes it); more: start over
 const CLASS_ORDER: DelayClass[] = ["ontime", "slight", "late", "verylate", "unknown"];
 const LIVE_ORDER: DelayClass[] = ["ontime", "slight", "late", "verylate"]; // the classes with live data
+
+// The fold button's chevron, the same drawing as the stop panel's grow button (index.html).
+const FOLD_ICON =
+  '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6" /></svg>';
 
 const cityName = (id: CityId): string => t().cityNames[id]; // "Köln" in German, "Cologne" in English
 const cityNames = (ids: CityId[]): string => t().cityList(ids.map(cityName)); // "Bonn and Cologne"
@@ -104,11 +108,9 @@ export function startLiveMap(map: maplibregl.Map | null, onVehicleTap: (ref: Tri
   let ready = false;
   let lastTrackMs = 0;
 
-  // The cities the numbers describe (at least one, in CITY_IDS order): a shared link's, else the one where the
-  // map starts, else Köln. Moving the map does not change them.
-  const start = map?.getCenter();
-  const startCity = (start ? cityOf(start.lng, start.lat) : null) ?? "koeln";
-  let selected: CityId[] = link?.cities ?? [startCity];
+  // The cities the numbers describe (at least one, in CITY_IDS order): a link's (or the reloaded entry's), else
+  // Köln, where a first visit's map starts too. Moving the map does not change them.
+  let selected: CityId[] = link?.cities ?? [DEFAULT_CITY];
 
   const filters: Filters = { groups: withSbahn(link?.groups ?? ALL_GROUPS) };
   let highlight: string | null = link?.line ?? null; // a line key ("TRAM|16") from the line list
@@ -120,7 +122,7 @@ export function startLiveMap(map: maplibregl.Map | null, onVehicleTap: (ref: Tri
   // The info tab open at the top, if any. Kept in memory only, so a language switch keeps it; a new visit starts
   // with all of them closed (nothing stored).
   let infoTab: string | null = null;
-  let published = ""; // the overview state last given to nav.ts (publish); set before the first publish()
+  let published: string | null = null; // the overview state last given to nav.ts (publish); null: none yet
   // Each trip's destination (map/trips does not send it), from one /api/trip per trip, for the most delayed
   // list's directions. null: the trip has none, or the lookup failed (tried again later, failedLookups).
   const destinations = new Map<string, string | null>();
@@ -157,7 +159,10 @@ export function startLiveMap(map: maplibregl.Map | null, onVehicleTap: (ref: Tri
   }
   setInterval(sync, CHECK_MS);
   setInterval(() => frame(false), FRAME_MS);
-  onResume(sync);
+  onResume(() => {
+    sync();
+    render(); // the status dot says "live" again at once
+  });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") sync();
   });
@@ -352,6 +357,7 @@ export function startLiveMap(map: maplibregl.Map | null, onVehicleTap: (ref: Tri
     const head = el("div", "live-head");
     const title = el("h2", "live-title", tx.liveTitle);
     const fold = button("live-fold", "");
+    fold.innerHTML = FOLD_ICON; // points up (unfold); style.css turns it over while the sheet is open
     fold.setAttribute("aria-controls", "live-body");
     fold.addEventListener("click", () => {
       folded = !folded;
@@ -368,9 +374,16 @@ export function startLiveMap(map: maplibregl.Map | null, onVehicleTap: (ref: Tri
       return [city.id, btn] as const;
     });
     cityGroup.append(...cityButtons.map(([, b]) => b));
-    head.append(el("span", "live-pulse"), title, cityGroup, fold);
+    // The title row is its own element: on phones it stays at the top of the open sheet while the rest scrolls
+    // (style.css), so the fold button is always in reach. Folded, only its button shows, next to the cities.
+    head.append(el("span", "live-pulse"), title, fold);
 
+    // What the numbers cover. Folded on a phone the title is gone, so the status dot sits here, with a word
+    // ("Live", "Paused"): a dot alone does not say what it stands for.
     const scope = el("p", "live-scope");
+    const word = el("span", "live-word");
+    const scopeText = el("span", "live-scope-text");
+    scope.append(el("span", "live-pulse"), word, scopeText);
     const headline = el("h3", "live-headline");
     const pct = el("strong", "live-pct");
     const caption = el("span", "live-caption");
@@ -383,7 +396,8 @@ export function startLiveMap(map: maplibregl.Map | null, onVehicleTap: (ref: Tri
     // A link to this overview.
     const share = button("live-share-link", tx.shareLiveButton);
     share.addEventListener("click", () => {
-      void shareLink(`${location.origin}${location.pathname}#${liveHash(liveRef())}`, t().pageTitle, t().shareLiveNote);
+      const hash = liveHash(liveRef());
+      void shareLink(`${location.origin}${location.pathname}${hash ? `#${hash}` : ""}`, t().pageTitle, t().shareLiveNote);
     });
     // Phones with a stop, trip or route open: only this one line stays, at the top of the map, with the
     // city's data warning. Tapping it closes the panel: the full overview is back.
@@ -578,12 +592,12 @@ export function startLiveMap(map: maplibregl.Map | null, onVehicleTap: (ref: Tri
       bar, cityBars, dist, liveShare, findings, chips, kindTitle, kindBars, kindNote,
       delays, worstTitle, worst, stuck, detail, notices, share, tip,
     );
-    box.replaceChildren(strip, info, head, scope, headline, health, status, mini, body);
+    box.replaceChildren(strip, info, head, cityGroup, scope, headline, health, status, mini, body);
     box.hidden = false;
     lastStatus = "";
     noticesDrawn = ""; // new, empty section (language switch)
     return {
-      fold, info, cityButtons, scope, pct, caption, health, status, body, bar, cityBars, distRows,
+      fold, info, cityButtons, word, scopeText, pct, caption, health, status, body, bar, cityBars, distRows,
       groupChips, worstTitle, worst, detail, detailTitle, detailStats, detailRange, detailRows, detailMore,
       notices, findings, liveShare, kindTitle, kindBars, kindNote,
       strip, delays, lead, leadNote, rulerTitle, ruler, rulerAxis, rulerLegend, hist, histTitle, histAxis,
@@ -598,16 +612,29 @@ export function startLiveMap(map: maplibregl.Map | null, onVehicleTap: (ref: Tri
     ui.fold.hidden = rail;
     ui.fold.setAttribute("aria-expanded", String(!isFolded));
     ui.fold.setAttribute("aria-label", isFolded ? tx.liveUnfold : tx.liveFold);
-    ui.fold.textContent = isFolded ? "▴" : "▾";
     ui.body.hidden = ui.info.hidden = isFolded;
     box.classList.toggle("folded", isFolded);
 
     for (const [id, btn] of ui.cityButtons) btn.setAttribute("aria-pressed", String(selected.includes(id)));
     const kinds = ALL_GROUPS.filter((g) => filters.groups.has(g)).map((g) => scopeText(g));
     const where = selected.length === 1 ? tx.cityScope(cityName(selected[0]!)) : cityNames(selected);
-    ui.scope.textContent = [where, kinds.join(", ")].join(" · ");
+    ui.scopeText.textContent = [where, kinds.join(", ")].join(" · ");
 
     const health = healthText(counted);
+    // The status dot (style.css colors it): pulsing mint only while the numbers are fresh and being refreshed.
+    // Still and amber when they are old or incomplete, or the refresh is paused (idle); red when loading failed.
+    const dot = !hasNumbers(current.state)
+      ? current.state === "failed" || current.state === "expired"
+        ? "failed"
+        : "loading"
+      : !isLive()
+        ? "paused"
+        : health.warning
+          ? "old"
+          : "live";
+    box.dataset["state"] = dot;
+    ui.word.textContent = dot === "live" ? tx.liveWord : dot === "paused" ? tx.livePaused : "";
+    ui.word.hidden = ui.word.textContent === "";
     ui.pct.textContent = health.pct ?? "";
     ui.pct.hidden = health.pct === null;
     ui.caption.textContent = health.caption;
